@@ -447,7 +447,7 @@
 
       <div class="field">
         <label for="photo1">If there's a photograph of you that felt true, show me</label>
-        <span class="hint">Up to three. Leave it empty if there isn't one — that's an answer too.</span>
+        <span class="hint">Up to three. Leave it empty if there isn't one — that's an answer too. Large images are shrunk automatically before sending.</span>
         <div class="uploads">
           <input type="file" id="photo1" name="Photo 1" accept="image/*">
           <input type="file" id="photo2" name="Photo 2" accept="image/*">
@@ -581,8 +581,70 @@
         var target = problems[0];
         target.scrollIntoView({ behavior: 'smooth', block: 'center' });
         if (target.focus) target.focus({ preventScroll: true });
+        return;
+      }
+
+      // Netlify caps the whole submission at 8MB, so shrink images first.
+      if (!shrunk && hasImages()) {
+        e.preventDefault();
+        shrinkAll().then(function () {
+          shrunk = true;
+          form.submit();
+        }).catch(function () {
+          shrunk = true;
+          form.submit();
+        });
       }
     });
+
+    /* ---------- image resizing ---------- */
+
+    var shrunk = false;
+    var MAX_EDGE = 1600;
+    var QUALITY = 0.82;
+
+    function fileInputs() {
+      return Array.prototype.slice.call(form.querySelectorAll('input[type="file"]'));
+    }
+
+    function hasImages() {
+      return fileInputs().some(function (i) { return i.files && i.files.length; });
+    }
+
+    function shrinkOne(file) {
+      if (!file || !/^image\//.test(file.type) || typeof createImageBitmap !== 'function') {
+        return Promise.resolve(file);
+      }
+      return createImageBitmap(file).then(function (bmp) {
+        var scale = Math.min(1, MAX_EDGE / Math.max(bmp.width, bmp.height));
+        if (scale === 1 && file.size < 1200000) return file;
+        var w = Math.round(bmp.width * scale);
+        var h = Math.round(bmp.height * scale);
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
+        return new Promise(function (resolve) {
+          canvas.toBlob(function (blob) {
+            if (!blob || blob.size >= file.size) return resolve(file);
+            resolve(new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg',
+                             { type: 'image/jpeg' }));
+          }, 'image/jpeg', QUALITY);
+        });
+      }).catch(function () { return file; });
+    }
+
+    function shrinkAll() {
+      return Promise.all(fileInputs().map(function (input) {
+        if (!input.files || !input.files.length) return Promise.resolve();
+        return shrinkOne(input.files[0]).then(function (out) {
+          if (out === input.files[0] || typeof DataTransfer !== 'function') return;
+          var dt = new DataTransfer();
+          dt.items.add(out);
+          input.files = dt.files;
+        });
+      }));
+    }
   })();
 </script>
 
