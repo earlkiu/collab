@@ -433,6 +433,12 @@
           <option>Other</option>
         </select>
       </div>
+
+      <div class="field" id="referred-field" hidden>
+        <label for="referred">Who recommended me?</label>
+        <span class="hint">A name is enough. I'd like to thank them.</span>
+        <input type="text" id="referred" name="Referred by">
+      </div>
     </section>
 
     <!-- 02 ---------------------------------------------------------- -->
@@ -550,6 +556,20 @@
       if (isNaN(d.getTime())) return false;
       return d <= cutoff;
     }
+
+    // Ask who, but only when the answer calls for it.
+    var heard = document.getElementById('heard');
+    var referredField = document.getElementById('referred-field');
+    var referred = document.getElementById('referred');
+
+    function toggleReferred() {
+      var show = heard.value === 'Someone recommended it';
+      referredField.hidden = !show;
+      if (!show) referred.value = '';
+    }
+
+    heard.addEventListener('change', toggleReferred);
+    toggleReferred();
 
     dob.addEventListener('change', function () {
       dobError.classList.toggle('show', dob.value !== '' && !isAdult(dob.value));
