@@ -48,12 +48,6 @@ const select = (v) => (text(v) ? { select: { name: text(v).slice(0, 100) } } : u
 const date = (v) => (text(v) ? { date: { start: text(v) } } : undefined);
 const checkbox = (v) => ({ checkbox: text(v).toLowerCase() === 'agreed' });
 
-const multiSelect = (v) => {
-  const values = Array.isArray(v) ? v : text(v).split(',');
-  const names = values.map((s) => text(s)).filter(Boolean);
-  return names.length ? { multi_select: names.map((name) => ({ name: name.slice(0, 100) })) } : undefined;
-};
-
 // Drop undefined values so Notion never sees a null property.
 const clean = (obj) => Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
 
@@ -72,6 +66,24 @@ const heading = (content) => ({
 function section(label, value) {
   if (!text(value)) return [];
   return [heading(label), paragraph(text(value))];
+}
+
+// File fields arrive as URLs to the uploaded file on Netlify.
+function photoSection(d) {
+  const urls = ['Photo 1', 'Photo 2', 'Photo 3'].map((k) => text(d[k])).filter(Boolean);
+  if (!urls.length) return [];
+  return [heading('Photographs she sent')].concat(
+    urls.map((url, i) => ({
+      object: 'block',
+      type: 'paragraph',
+      paragraph: {
+        rich_text: [{
+          type: 'text',
+          text: { content: `Photo ${i + 1}`, link: { url } },
+        }],
+      },
+    })),
+  );
 }
 
 /* ---------- person lookup ---------- */
@@ -136,7 +148,7 @@ export default async (req) => {
 
     const body = [
       ...section('Who they are', d['Who they are']),
-      ...section('Has a photograph ever felt like them', d['Ever felt seen']),
+      ...photoSection(d),
       ...section('References', d.References),
       ...section('Limits', d.Limits),
     ];
@@ -149,11 +161,10 @@ export default async (req) => {
           Name: title(sessionTitle),
           Person: { relation: [{ id: personId }] },
           Type: select('Collab'),
-          Status: { status: { name: 'New' } },
+          Status: select('New'),
           Source: select('Collab form'),
           Submitted: date(submitted),
           'Comfort level': select(d['Comfort level']),
-          Availability: multiSelect(d.Availability),
           Experience: select(d.Experience),
           'Heard via': select(d['How they found it']),
           'Consent — usage': checkbox(d['Usage consent']),
