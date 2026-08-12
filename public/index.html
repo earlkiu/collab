@@ -230,6 +230,44 @@
     line-height: 1.45;
   }
 
+  /* ---------- Uploads ---------- */
+
+  .uploads { margin-top: 4px; }
+
+  .uploads input[type="file"] {
+    display: block;
+    width: 100%;
+    font-family: var(--font);
+    font-size: 13px;
+    color: var(--n500);
+    padding: 11px 0;
+    border-bottom: 1px solid var(--n200);
+    cursor: pointer;
+  }
+
+  .uploads input[type="file"]:last-child { border-bottom: 0; }
+
+  .uploads input[type="file"]::file-selector-button {
+    font-family: var(--font);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--n500);
+    background: transparent;
+    border: 1px solid var(--n300);
+    border-radius: 0;
+    padding: 7px 14px;
+    margin-right: 14px;
+    cursor: pointer;
+    transition: border-color 0.25s ease, color 0.25s ease;
+  }
+
+  .uploads input[type="file"]::file-selector-button:hover {
+    border-color: var(--n700);
+    color: var(--n700);
+  }
+
   /* ---------- Terms ---------- */
 
   .terms-body {
@@ -340,7 +378,7 @@
     <p>If any of that sounds like something you've been waiting for, tell me a little below. I read every one of these.</p>
   </section>
 
-  <form name="collab" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" action="/thanks" id="collab-form" novalidate>
+  <form name="collab" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" enctype="multipart/form-data" action="/thanks" id="collab-form" novalidate>
     <input type="hidden" name="form-name" value="collab">
     <p class="hp"><label>Leave this empty: <input name="bot-field"></label></p>
 
@@ -408,9 +446,13 @@
       </div>
 
       <div class="field">
-        <label for="seen">Has a photograph of you ever felt like you?</label>
-        <span class="hint">Either answer is interesting to me.</span>
-        <textarea id="seen" name="Ever felt seen" rows="4"></textarea>
+        <label for="photo1">If there's a photograph of you that felt true, show me</label>
+        <span class="hint">Up to three. Leave it empty if there isn't one — that's an answer too.</span>
+        <div class="uploads">
+          <input type="file" id="photo1" name="Photo 1" accept="image/*">
+          <input type="file" id="photo2" name="Photo 2" accept="image/*">
+          <input type="file" id="photo3" name="Photo 3" accept="image/*">
+        </div>
       </div>
 
       <div class="field">
