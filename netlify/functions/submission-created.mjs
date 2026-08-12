@@ -167,6 +167,7 @@ export default async (req) => {
           'Comfort level': select(d['Comfort level']),
           Experience: select(d.Experience),
           'Heard via': select(d['How they found it']),
+          'Referred by': richText(d['Referred by']),
           'Consent — usage': checkbox(d['Usage consent']),
           'Consent — limits': checkbox(d['Usage limits accepted']),
           'Consent — age': checkbox(d['Age confirmation']),
