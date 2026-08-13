@@ -68,9 +68,17 @@ function section(label, value) {
   return [heading(label), paragraph(text(value))];
 }
 
-// File fields arrive as URLs to the uploaded file on Netlify.
+// File fields arrive either as a URL string or as an object carrying the URL.
+// Anything that is not an absolute http(s) URL is dropped — Notion rejects the
+// whole page create if a single link is malformed.
+function fileUrl(v) {
+  const raw = typeof v === 'string' ? v : (v && (v.url || v.href)) || '';
+  const url = String(raw).trim();
+  return /^https?:\/\//i.test(url) ? url : '';
+}
+
 function photoSection(d) {
-  const urls = ['Photo 1', 'Photo 2', 'Photo 3'].map((k) => text(d[k])).filter(Boolean);
+  const urls = ['Photo 1', 'Photo 2', 'Photo 3'].map((k) => fileUrl(d[k])).filter(Boolean);
   if (!urls.length) return [];
   return [heading('Photographs she sent')].concat(
     urls.map((url, i) => ({
