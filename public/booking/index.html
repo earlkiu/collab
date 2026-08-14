@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Book your session — Earl Kiu</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="https://use.typekit.net/pur8tye.css">
+<style>
+  :root {
+    --n100: #F2F0ED; --n200: #DDDAD6; --n400: #7A7672;
+    --n600: #1E1C1A; --n700: #100F0D;
+    --font: 'artifex-hand-cf', Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--n100); color: var(--n700);
+    font-family: var(--font); -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 62rem; margin: 0 auto; padding: 4rem 1.5rem 5rem; }
+  h1 { font-size: 1.75rem; font-weight: 400; margin: 0 0 .75rem; letter-spacing: -.01em; }
+  p { color: var(--n600); line-height: 1.6; margin: 0 0 2.5rem; max-width: 34rem; }
+  #cal-inline { width: 100%; min-height: 40rem; overflow: auto; }
+  .note { color: var(--n400); font-size: .9rem; margin-top: 2.5rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Pick a date</h1>
+  <p>Choose a day that works. The agreement comes next, on the following screen — nothing is confirmed until it is signed.</p>
+
+  <div id="cal-inline"></div>
+
+  <p class="note" id="note"></p>
+</main>
+
+<script>
+  // The Notion session id arrives on the link Earl sends and has to survive the
+  // trip through Cal. Params are forwarded on success, but sessionStorage is the
+  // belt to that braces.
+  var s = new URLSearchParams(location.search).get('s');
+  if (s) sessionStorage.setItem('collab_session', s);
+  else document.getElementById('note').textContent =
+    'This link looks incomplete. Reply to the email you received and Earl will send a new one.';
+</script>
+
+<script type="text/javascript">
+  (function (C, A, L) {
+    let p = function (a, ar) { a.q.push(ar); };
+    let d = C.document;
+    C.Cal = C.Cal || function () {
+      let cal = C.Cal; let ar = arguments;
+      if (!cal.loaded) {
+        cal.ns = {}; cal.q = cal.q || [];
+        d.head.appendChild(d.createElement("script")).src = A;
+        cal.loaded = true;
+      }
+      if (ar[0] === L) {
+        const api = function () { p(api, arguments); };
+        const namespace = ar[1];
+        api.q = api.q || [];
+        if (typeof namespace === "string") {
+          cal.ns[namespace] = cal.ns[namespace] || api;
+          p(cal.ns[namespace], ar); p(cal, ["initNamespace", namespace]);
+        } else p(cal, ar);
+        return;
+      }
+      p(cal, ar);
+    };
+  })(window, "https://app.cal.com/embed/embed.js", "init");
+
+  Cal("init", "collab", { origin: "https://app.cal.com" });
+  Cal.ns.collab("inline", {
+    elementOrSelector: "#cal-inline",
+    calLink: "earlkiu/book-collab",
+    config: { layout: "month_view" }
+  });
+  Cal.ns.collab("ui", { hideEventTypeDetails: false, layout: "month_view" });
+</script>
+</body>
+</html>

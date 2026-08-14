@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>The agreement — Earl Kiu</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="https://use.typekit.net/pur8tye.css">
+<style>
+  :root {
+    --n100: #F2F0ED; --n200: #DDDAD6; --n400: #7A7672;
+    --n600: #1E1C1A; --n700: #100F0D;
+    --font: 'artifex-hand-cf', Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--n100); color: var(--n700);
+    font-family: var(--font); -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 46rem; margin: 0 auto; padding: 4rem 1.5rem 5rem; }
+  h1 { font-size: 1.75rem; font-weight: 400; margin: 0 0 .75rem; letter-spacing: -.01em; }
+  p { color: var(--n600); line-height: 1.6; margin: 0 0 2rem; }
+  .muted { color: var(--n400); }
+  iframe { width: 100%; min-height: 46rem; border: 1px solid var(--n200); background: #fff; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="h">One moment</h1>
+  <p id="msg" class="muted">Preparing your agreement.</p>
+  <div id="frame"></div>
+</main>
+
+<script>
+(async function () {
+  var q = new URLSearchParams(location.search);
+  var s = q.get('s') || sessionStorage.getItem('collab_session');
+  var uid = q.get('uid') || q.get('bookingUid') || '';
+
+  var h = document.getElementById('h');
+  var msg = document.getElementById('msg');
+
+  function fail(text) {
+    h.textContent = 'Something went wrong';
+    msg.textContent = text;
+  }
+
+  if (!s) {
+    fail('We could not match this to your enquiry. Reply to Earl’s email and he will send a fresh link — your date is still held.');
+    return;
+  }
+
+  try {
+    var res = await fetch('/.netlify/functions/create-contract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ s: s, uid: uid })
+    });
+    if (!res.ok) throw new Error('bad response');
+    var data = await res.json();
+    if (!data.signUrl) throw new Error('no url');
+
+    h.textContent = 'Read this properly';
+    msg.innerHTML = 'It is short, and it is written to be understood rather than skimmed. Your date is held until you sign — nothing else is needed after this.';
+
+    var f = document.createElement('iframe');
+    f.src = data.signUrl + '?embedded=yes';
+    document.getElementById('frame').appendChild(f);
+  } catch (e) {
+    fail('Your date is held. Reply to Earl’s email and he will sort this out.');
+  }
+})();
+</script>
+</body>
+</html>
