@@ -1,12 +1,17 @@
 /**
  * Read-only availability for the collab event type.
  *
- * GET ?from=YYYY-MM-DD&to=YYYY-MM-DD → { days: [{ date, slots: ["09:00", …] }] }
+ * GET ?from=YYYY-MM-DD&to=YYYY-MM-DD → { days: [{ date, clear }] }
  *
  * Exists so the talent Earl works with can line up dates with other people
- * before anyone asks for a booking link. It only reads slots — nothing here can
- * create, hold or cancel a booking, and no name, email or existing booking is
- * ever returned. Booking still requires a link from Earl.
+ * before anyone asks for a booking link. Nothing here can create, hold or
+ * cancel a booking, and no name, email, existing booking or clock time is ever
+ * returned — only which dates could still take a session.
+ *
+ * What counts as available: a day where a full six-hour session still fits.
+ * Cal already accounts for the two-hour buffers either side, so a day only
+ * appears if the slots it offers are genuinely usable. Days marked `clear` are
+ * untouched — nothing on the calendar at all.
  *
  * Environment variables:
  *   CAL_API_KEY
@@ -17,7 +22,6 @@ const TZ = 'Asia/Kuala_Lumpur';
 
 // Cal's own booking window is 60 days; asking beyond that returns nothing.
 const MAX_DAYS_AHEAD = 60;
-const DEFAULT_SPAN = 21;
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -48,7 +52,7 @@ export default async (req) => {
   const today = todayKL();
 
   let from = isDate(q.get('from')) ? q.get('from') : today;
-  let to = isDate(q.get('to')) ? q.get('to') : addDays(from, DEFAULT_SPAN);
+  let to = isDate(q.get('to')) ? q.get('to') : addDays(today, MAX_DAYS_AHEAD);
 
   // Never look backwards, never past Cal's own window.
   if (from < today) from = today;
@@ -78,23 +82,22 @@ export default async (req) => {
     const body = await res.json();
     const raw = body.data || {};
 
-    // Cal returns { "2026-08-20": [{ start: "…" }, …] }. Reduce to clock times
-    // so nothing beyond free/busy leaves this function.
-    const days = Object.keys(raw)
-      .sort()
-      .map((date) => ({
-        date,
-        slots: (raw[date] || [])
-          .map((s) => {
-            const t = typeof s === 'string' ? s : s.start;
-            if (!t) return null;
-            return new Date(t).toLocaleTimeString('en-GB', {
-              hour: '2-digit', minute: '2-digit', timeZone: TZ,
-            });
-          })
-          .filter(Boolean),
-      }))
-      .filter((d) => d.slots.length);
+    // Cal returns { "2026-08-20": [{ start: "…" }, …] }. Every slot Cal offers
+    // is one a full session can start at, so any slot means the day is usable.
+    // The widest span still open is the signal for whether anything is on the
+    // calendar at all — a day with a booking loses most of its start times.
+    const counts = Object.keys(raw).map((date) => ({
+      date,
+      n: (raw[date] || []).length,
+    })).filter((d) => d.n > 0);
+
+    // A completely free day offers the most start times of any day in the
+    // window. Anything short of that has something on it.
+    const busiest = counts.reduce((max, d) => (d.n > max ? d.n : max), 0);
+
+    const days = counts
+      .sort((a, b) => (a.date < b.date ? -1 : 1))
+      .map((d) => ({ date: d.date, clear: d.n >= busiest }));
 
     return json({ from, to, timeZone: TZ, days });
   } catch (err) {
