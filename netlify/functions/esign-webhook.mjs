@@ -6,9 +6,13 @@
  *
  * On contract-signed:
  *   1. Verify the HMAC — anyone who finds this URL could otherwise write to Notion
- *   2. Mark the session as signed, using the Notion page id carried in `metadata`
+ *   2. Mark the session as signed, using the ids carried in `metadata`
  *   3. Write the details she entered into the session page body
  *   4. Confirm the pending Cal booking
+ *
+ * `metadata` carries "<notion session page id>|<cal booking uid>". The uid half
+ * may be empty. This is why neither Notion nor Cal needs a new field to tie the
+ * three systems together — the contract carries the join key itself.
  *
  * NOT YET WIRED: the signed PDF. `contract_pdf_url` expires in three days and
  * eSignatures.com only retains contracts for three years, while the release is
@@ -100,11 +104,11 @@ export default async (req) => {
   }
 
   const contract = event.data?.contract || {};
-  const sessionId = (contract.metadata || '').trim();
+  const [sessionId = '', bookingUid = ''] = String(contract.metadata || '').split('|');
   const signer = contract.signers?.[0] || {};
   const f = signer.signer_field_values || {};
 
-  if (!sessionId) {
+  if (!sessionId.trim()) {
     console.error(`contract ${contract.id} signed but carries no session id`);
     return new Response('OK', { status: 200 });
   }
@@ -112,13 +116,13 @@ export default async (req) => {
   try {
     // Return 200 even if the row is already marked — eSignatures retries six
     // times, and a duplicate block append is worse than a no-op.
-    const page = await notion(`/pages/${sessionId}`);
+    const page = await notion(`/pages/${sessionId.trim()}`);
     if (page.properties['Release signed']?.checkbox === true) {
       console.log(`contract ${contract.id} already recorded, skipping`);
       return new Response('OK', { status: 200 });
     }
 
-    await notion(`/pages/${sessionId}`, {
+    await notion(`/pages/${sessionId.trim()}`, {
       method: 'PATCH',
       body: JSON.stringify({
         properties: { 'Release signed': { checkbox: true } },
@@ -137,16 +141,17 @@ export default async (req) => {
     ];
     if (level) blocks.push(paragraph(`Wardrobe level agreed: ${level}`));
 
-    await notion(`/blocks/${sessionId}/children`, {
+    await notion(`/blocks/${sessionId.trim()}/children`, {
       method: 'PATCH',
       body: JSON.stringify({ children: blocks }),
     });
 
-    await confirmBooking(page.properties['Booking UID'] ? undefined : undefined);
+    // The booking sits pending until this point. Signature is the confirmation.
+    await confirmBooking(bookingUid.trim());
 
     // The PDF link is live for three days only. Logged so it is recoverable
     // by hand until the Drive copy is built.
-    console.log(`contract ${contract.id} signed · session ${sessionId} · pdf ${contract.contract_pdf_url}`);
+    console.log(`contract ${contract.id} signed · session ${sessionId.trim()} · pdf ${contract.contract_pdf_url}`);
 
     return new Response('OK', { status: 200 });
   } catch (err) {
