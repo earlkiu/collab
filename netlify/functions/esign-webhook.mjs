@@ -6,13 +6,17 @@
  *
  * On contract-signed:
  *   1. Verify the HMAC — anyone who finds this URL could otherwise write to Notion
- *   2. Mark the session as signed, using the ids carried in `metadata`
+ *   2. Update the session, using the ids carried in `metadata`
  *   3. Write the details she entered into the session page body
- *   4. Confirm the pending Cal booking
+ *   4. Confirm the pending Cal booking, if there is one
  *
- * `metadata` carries "<notion session page id>|<cal booking uid>". The uid half
- * may be empty. This is why neither Notion nor Cal needs a new field to tie the
- * three systems together — the contract carries the join key itself.
+ * `metadata` is "<notion session page id>|<cal booking uid>|<kind>". The uid may
+ * be empty. `kind` is "agreement" or "schedule":
+ *
+ *   agreement — the main release. Marks Release signed and the date.
+ *   schedule  — the standalone Schedule 1, signed mid-shoot when someone changes
+ *               their mind about wardrobe. The agreement stays as signed; this
+ *               only records the level agreed and updates Comfort level.
  *
  * NOT YET WIRED: the signed PDF. `contract_pdf_url` expires in three days and
  * eSignatures.com only retains contracts for three years, while the release is
@@ -64,12 +68,16 @@ const paragraph = (content) => ({
   paragraph: { rich_text: [{ text: { content: String(content).slice(0, 2000) } }] },
 });
 
-// Which wardrobe level she selected, if Schedule 1 was attached.
+// Which wardrobe level she selected, if a schedule was part of the document.
 function wardrobeLevel(f) {
   if (f.wardrobe_nude) return 'Full nudity';
   if (f.wardrobe_topless) return 'Topless';
   if (f.wardrobe_implied) return 'Implied — strategically covered';
   return '';
+}
+
+function todayKL() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });
 }
 
 async function confirmBooking(uid) {
@@ -104,35 +112,71 @@ export default async (req) => {
   }
 
   const contract = event.data?.contract || {};
-  const [sessionId = '', bookingUid = ''] = String(contract.metadata || '').split('|');
+  const parts = String(contract.metadata || '').split('|');
+  const sessionId = (parts[0] || '').trim();
+  const bookingUid = (parts[1] || '').trim();
+  const kind = (parts[2] || 'agreement').trim();
+
   const signer = contract.signers?.[0] || {};
   const f = signer.signer_field_values || {};
+  const level = wardrobeLevel(f);
+  const today = todayKL();
 
-  if (!sessionId.trim()) {
+  if (!sessionId) {
     console.error(`contract ${contract.id} signed but carries no session id`);
     return new Response('OK', { status: 200 });
   }
 
   try {
-    // Return 200 even if the row is already marked — eSignatures retries six
-    // times, and a duplicate block append is worse than a no-op.
-    const page = await notion(`/pages/${sessionId.trim()}`);
+    const page = await notion(`/pages/${sessionId}`);
+
+    if (kind === 'schedule') {
+      // A supplement. Never touches Release signed — the original agreement is
+      // what that flag refers to, and it is already true.
+      const blocks = [
+        heading('Schedule 1 signed on set'),
+        paragraph(`Contract ${contract.id} · ${today}`),
+        paragraph(`Name as per NRIC or passport: ${f.model_name || '—'}`),
+        paragraph(`NRIC or passport: ${f.model_id || '—'}`),
+        paragraph(`Wardrobe level agreed: ${level || '—'}`),
+      ];
+
+      await notion(`/blocks/${sessionId}/children`, {
+        method: 'PATCH',
+        body: JSON.stringify({ children: blocks }),
+      });
+
+      if (level) {
+        await notion(`/pages/${sessionId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ properties: { 'Comfort level': { select: { name: level } } } }),
+        });
+      }
+
+      console.log(`schedule ${contract.id} signed · session ${sessionId} · ${level} · pdf ${contract.contract_pdf_url}`);
+      return new Response('OK', { status: 200 });
+    }
+
+    // The main agreement. eSignatures retries six times, so a second delivery
+    // must not append the same block twice.
     if (page.properties['Release signed']?.checkbox === true) {
       console.log(`contract ${contract.id} already recorded, skipping`);
       return new Response('OK', { status: 200 });
     }
 
-    await notion(`/pages/${sessionId.trim()}`, {
+    await notion(`/pages/${sessionId}`, {
       method: 'PATCH',
       body: JSON.stringify({
-        properties: { 'Release signed': { checkbox: true } },
+        properties: {
+          'Release signed': { checkbox: true },
+          'Release signed on': { date: { start: today } },
+        },
       }),
     });
 
-    const level = wardrobeLevel(f);
     const blocks = [
       heading('Agreement signed'),
-      paragraph(`Contract ${contract.id}`),
+      paragraph(`Contract ${contract.id} · ${today}`),
       paragraph(`Name as per NRIC or passport: ${f.model_name || '—'}`),
       paragraph(`Date of birth: ${f.model_dob || '—'}`),
       paragraph(`Nationality: ${f.model_nationality || '—'}`),
@@ -141,17 +185,17 @@ export default async (req) => {
     ];
     if (level) blocks.push(paragraph(`Wardrobe level agreed: ${level}`));
 
-    await notion(`/blocks/${sessionId.trim()}/children`, {
+    await notion(`/blocks/${sessionId}/children`, {
       method: 'PATCH',
       body: JSON.stringify({ children: blocks }),
     });
 
     // The booking sits pending until this point. Signature is the confirmation.
-    await confirmBooking(bookingUid.trim());
+    await confirmBooking(bookingUid);
 
     // The PDF link is live for three days only. Logged so it is recoverable
     // by hand until the Drive copy is built.
-    console.log(`contract ${contract.id} signed · session ${sessionId.trim()} · pdf ${contract.contract_pdf_url}`);
+    console.log(`contract ${contract.id} signed · session ${sessionId} · pdf ${contract.contract_pdf_url}`);
 
     return new Response('OK', { status: 200 });
   } catch (err) {
