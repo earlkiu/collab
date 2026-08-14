@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Before we start — Earl Kiu</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="https://use.typekit.net/pur8tye.css">
+<style>
+  :root {
+    --n100: #F2F0ED; --n200: #DDDAD6; --n400: #7A7672;
+    --n600: #1E1C1A; --n700: #100F0D;
+    --font: 'artifex-hand-cf', Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--n100); color: var(--n700);
+    font-family: var(--font); -webkit-font-smoothing: antialiased;
+    padding: 2.5rem 1.25rem 4rem;
+  }
+  main { max-width: 30rem; margin: 0 auto; }
+  h1 { font-size: 1.5rem; font-weight: 400; margin: 0 0 .5rem; }
+  .sub { color: var(--n400); font-size: .95rem; line-height: 1.5; margin: 0 0 2.25rem; }
+  label { display: block; font-size: .9rem; color: var(--n600); margin: 0 0 .4rem; }
+  input[type=text], input[type=email], select, textarea {
+    width: 100%; font-family: var(--font); font-size: 1rem; color: var(--n700);
+    background: #fff; border: 1px solid var(--n200); border-radius: 2px;
+    padding: .7rem .75rem; margin: 0 0 1.4rem;
+  }
+  textarea { min-height: 4.5rem; resize: vertical; }
+  .consents { border-top: 1px solid var(--n200); padding-top: 1.5rem; margin-top: .5rem; }
+  .consent { display: flex; gap: .65rem; margin: 0 0 1rem; align-items: flex-start; }
+  .consent input { margin-top: .25rem; flex: 0 0 auto; }
+  .consent span { font-size: .9rem; line-height: 1.45; color: var(--n600); }
+  button.go {
+    width: 100%; font-family: var(--font); font-size: 1rem; cursor: pointer;
+    background: var(--n700); color: var(--n100); border: 0; border-radius: 2px;
+    padding: .9rem; margin-top: 1rem;
+  }
+  button.go[disabled] { opacity: .45; cursor: default; }
+  .err { color: #8a2b2b; font-size: .9rem; margin: 1rem 0 0; line-height: 1.45; }
+  #confirm, #frame { display: none; }
+  #frame iframe { width: 100%; min-height: 44rem; border: 1px solid var(--n200); background: #fff; }
+  .check { font-size: 1.05rem; line-height: 1.5; margin: 0 0 1.75rem; }
+  .check strong { font-weight: 400; border-bottom: 1px solid var(--n400); }
+  button.plain {
+    background: none; border: 0; cursor: pointer; padding: 0;
+    font-family: var(--font); color: var(--n400); font-size: .9rem; margin-top: 1.25rem;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="h">Before we start</h1>
+  <p class="sub" id="sub">A few details for the agreement. Two minutes, then you sign on this phone.</p>
+
+  <div id="form">
+    <label for="name">Your full name, as on your IC or passport</label>
+    <input type="text" id="name" autocomplete="name">
+
+    <label for="email">Email — your signed copy goes here</label>
+    <input type="email" id="email" autocomplete="email" inputmode="email">
+
+    <label for="dob">Date of birth</label>
+    <input type="text" id="dob" placeholder="DD/MM/YYYY" inputmode="numeric">
+
+    <label for="instagram">Instagram <span style="color:var(--n400)">— optional</span></label>
+    <input type="text" id="instagram" placeholder="@" autocapitalize="off">
+
+    <label for="comfort">What you are comfortable with today</label>
+    <select id="comfort">
+      <option value="">Choose one</option>
+      <option>Fully clothed</option>
+      <option>Styled — sheer or revealing</option>
+      <option>Implied — strategically covered</option>
+      <option>Topless</option>
+      <option>Full nudity</option>
+    </select>
+
+    <label for="limits">Anything you would rather not do <span style="color:var(--n400)">— optional</span></label>
+    <textarea id="limits"></textarea>
+
+    <div class="consents">
+      <div class="consent">
+        <input type="checkbox" id="c1">
+        <span>Earl may use these photographs in his portfolio, on social media, in print and in exhibitions.</span>
+      </div>
+      <div class="consent">
+        <input type="checkbox" id="c2">
+        <span>I may use them personally and on my own social media, but not commercially and not altered.</span>
+      </div>
+      <div class="consent">
+        <input type="checkbox" id="c3">
+        <span>I am eighteen years of age or older.</span>
+      </div>
+      <div class="consent">
+        <input type="checkbox" id="c4">
+        <span>Earl may contact me about this session.</span>
+      </div>
+    </div>
+
+    <button class="go" id="go">Continue</button>
+    <p class="err" id="err" style="display:none"></p>
+  </div>
+
+  <div id="confirm">
+    <p class="check">Signing as <strong id="c-name"></strong>, and your copy goes to <strong id="c-email"></strong>.</p>
+    <button class="go" id="yes">That’s right — show me the agreement</button>
+    <button class="plain" id="fix">← Let me fix something</button>
+    <p class="err" id="err2" style="display:none"></p>
+  </div>
+
+  <div id="frame"></div>
+</main>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var payload = null;
+
+  function show(err, msg) {
+    err.textContent = msg;
+    err.style.display = 'block';
+  }
+
+  function adult(dd) {
+    var m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(dd);
+    if (!m) return null;
+    var d = new Date(m[3] + '-' + m[2] + '-' + m[1]);
+    if (isNaN(d.getTime())) return null;
+    var cut = new Date();
+    cut.setFullYear(cut.getFullYear() - 18);
+    return d <= cut;
+  }
+
+  $('go').onclick = function () {
+    var err = $('err');
+    err.style.display = 'none';
+
+    var name = $('name').value.trim();
+    var email = $('email').value.trim();
+    var dob = $('dob').value.trim();
+    var comfort = $('comfort').value;
+
+    if (!name) return show(err, 'Your name is needed for the agreement.');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return show(err, 'That email does not look right.');
+
+    var ok = adult(dob);
+    if (ok === null) return show(err, 'Date of birth as DD/MM/YYYY, please.');
+    if (ok === false) return show(err, 'This agreement can only be signed by someone eighteen or older.');
+
+    if (!comfort) return show(err, 'Choose what you are comfortable with.');
+    if (!($('c1').checked && $('c2').checked && $('c3').checked && $('c4').checked)) {
+      return show(err, 'All four need to be ticked before we go on.');
+    }
+
+    payload = {
+      name: name,
+      email: email,
+      dob: dob,
+      instagram: $('instagram').value.trim(),
+      comfort: comfort,
+      limits: $('limits').value.trim(),
+      consentUsage: true, consentLimits: true, consentAge: true, consentContact: true
+    };
+
+    $('c-name').textContent = name;
+    $('c-email').textContent = email;
+    $('form').style.display = 'none';
+    $('confirm').style.display = 'block';
+    $('sub').textContent = 'Check this before we go on.';
+    window.scrollTo(0, 0);
+  };
+
+  $('fix').onclick = function () {
+    $('confirm').style.display = 'none';
+    $('form').style.display = 'block';
+    $('sub').textContent = 'A few details for the agreement. Two minutes, then you sign on this phone.';
+  };
+
+  $('yes').onclick = async function () {
+    var err2 = $('err2');
+    err2.style.display = 'none';
+    this.disabled = true;
+    this.textContent = 'One moment…';
+
+    try {
+      var res = await fetch('/.netlify/functions/on-set-intake', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      var data = await res.json();
+      if (!res.ok || !data.signUrl) throw new Error(data.error || 'failed');
+
+      $('confirm').style.display = 'none';
+      $('h').textContent = 'Read this properly';
+      $('sub').textContent = 'It is short, and written to be understood rather than skimmed.';
+
+      var f = document.createElement('iframe');
+      f.src = data.signUrl + '?embedded=yes';
+      $('frame').appendChild(f);
+      $('frame').style.display = 'block';
+      window.scrollTo(0, 0);
+    } catch (e) {
+      this.disabled = false;
+      this.textContent = 'That’s right — show me the agreement';
+      show(err2, 'Something went wrong setting that up. Show this screen to Earl.');
+    }
+  };
+})();
+</script>
+</body>
+</html>
