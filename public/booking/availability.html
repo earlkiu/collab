@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Open dates — Earl Kiu</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="https://use.typekit.net/pur8tye.css">
+<style>
+  :root {
+    --n100: #F2F0ED; --n200: #DDDAD6; --n400: #7A7672;
+    --n600: #1E1C1A; --n700: #100F0D;
+    --font: 'artifex-hand-cf', Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--n100); color: var(--n700);
+    font-family: var(--font); -webkit-font-smoothing: antialiased;
+    padding: 3rem 1.25rem 5rem;
+  }
+  main { max-width: 34rem; margin: 0 auto; }
+  h1 { font-size: 1.5rem; font-weight: 400; margin: 0 0 .5rem; letter-spacing: -.01em; }
+  .sub { color: var(--n400); font-size: .95rem; line-height: 1.5; margin: 0 0 2.5rem; }
+  .day { border-top: 1px solid var(--n200); padding: 1.1rem 0; }
+  .day:last-child { border-bottom: 1px solid var(--n200); }
+  .date { font-size: 1.05rem; margin: 0 0 .5rem; }
+  .weekday { color: var(--n400); }
+  .slots { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .slot {
+    font-size: .85rem; color: var(--n600);
+    border: 1px solid var(--n200); border-radius: 2px;
+    padding: .3rem .55rem; background: #fff;
+  }
+  .msg { color: var(--n400); line-height: 1.6; }
+  footer { margin-top: 3rem; color: var(--n400); font-size: .85rem; line-height: 1.6; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Open dates</h1>
+  <p class="sub" id="sub">Loading…</p>
+
+  <div id="days"></div>
+
+  <footer id="foot"></footer>
+</main>
+
+<script>
+(function () {
+  var sub = document.getElementById('sub');
+  var wrap = document.getElementById('days');
+  var foot = document.getElementById('foot');
+
+  function label(iso) {
+    var d = new Date(iso + 'T00:00:00+08:00');
+    return {
+      day: d.toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'Asia/Kuala_Lumpur' }),
+      date: d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'Asia/Kuala_Lumpur' })
+    };
+  }
+
+  fetch('/.netlify/functions/availability')
+    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+    .then(function (res) {
+      if (!res.ok) throw new Error('bad');
+      var days = res.d.days || [];
+
+      if (!days.length) {
+        sub.textContent = 'Nothing open in the next three weeks.';
+        return;
+      }
+
+      sub.textContent = 'Free time over the next three weeks, Kuala Lumpur time. Sessions run up to six hours, so a day with one slot left may not fit a full shoot.';
+
+      days.forEach(function (d) {
+        var l = label(d.date);
+        var el = document.createElement('div');
+        el.className = 'day';
+
+        var h = document.createElement('p');
+        h.className = 'date';
+        h.innerHTML = l.date + ' <span class="weekday">· ' + l.day + '</span>';
+        el.appendChild(h);
+
+        var s = document.createElement('div');
+        s.className = 'slots';
+        d.slots.forEach(function (t) {
+          var b = document.createElement('span');
+          b.className = 'slot';
+          b.textContent = t;
+          s.appendChild(b);
+        });
+        el.appendChild(s);
+        wrap.appendChild(el);
+      });
+
+      foot.textContent = 'This page only shows what is free — nothing can be booked from here. Once a date is agreed, Earl sends a booking link.';
+    })
+    .catch(function () {
+      sub.textContent = 'Could not load the calendar just now. Try again in a moment.';
+    });
+})();
+</script>
+</body>
+</html>
