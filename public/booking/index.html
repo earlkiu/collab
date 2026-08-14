@@ -49,6 +49,7 @@ var BOOKER = null;
 
 function h() { return document.getElementById('h'); }
 function lede() { return document.getElementById('lede'); }
+function note() { return document.getElementById('note'); }
 
 function fail(title, text) {
   h().textContent = title;
@@ -56,8 +57,8 @@ function fail(title, text) {
   document.getElementById('cal-inline').style.display = 'none';
 }
 
-// The calendar does not render until Notion confirms this is a real, open
-// session. Without this, anyone who found the page could take a slot.
+// The calendar does not render until Notion confirms this is a real, open,
+// unexpired session. Without this, anyone who found the page could take a slot.
 (async function () {
   if (!SESSION) {
     fail('This link is incomplete',
@@ -73,6 +74,9 @@ function fail(title, text) {
       if (data.error === 'already_signed') {
         fail('This is already done',
           'Your date is booked and the agreement is signed. Nothing else is needed — check your inbox for the copy.');
+      } else if (data.error === 'expired') {
+        fail('This link has expired',
+          'Booking links stay open for five days. Reply to Earl\u2019s email and he will reopen it — this same link will start working again.');
       } else if (data.error === 'closed') {
         fail('This link is closed',
           'Reply to Earl\u2019s email if you think that is wrong.');
@@ -90,6 +94,12 @@ function fail(title, text) {
     lede().textContent = 'Choose a day that works. The agreement comes straight after — nothing is confirmed until it is signed.';
     document.getElementById('cal-inline').style.display = 'block';
 
+    if (typeof data.daysLeft === 'number') {
+      note().textContent = data.daysLeft <= 0
+        ? 'This link closes at the end of today.'
+        : 'This link stays open for another ' + data.daysLeft + (data.daysLeft === 1 ? ' day.' : ' days.');
+    }
+
     startCal(data);
   } catch (e) {
     fail('Something went wrong', 'Try again in a moment, or reply to Earl\u2019s email.');
@@ -98,6 +108,7 @@ function fail(title, text) {
 
 async function onBooked(uid) {
   document.getElementById('cal-inline').style.display = 'none';
+  note().textContent = '';
   h().textContent = 'One moment';
   lede().textContent = 'Preparing your agreement.';
 
