@@ -30,6 +30,13 @@
   }
   button.row:last-of-type { border-bottom: 1px solid var(--n200); }
   button.row .meta { display: block; color: var(--n400); font-size: .85rem; margin-top: .2rem; }
+  button.new {
+    display: block; width: 100%; text-align: left; cursor: pointer;
+    font-family: var(--font); font-size: 1.05rem; color: var(--n700);
+    background: transparent; border: 1px dashed var(--n200); border-radius: 2px;
+    padding: 1rem .9rem; line-height: 1.35; margin: 0 0 1.75rem;
+  }
+  button.new .meta { display: block; color: var(--n400); font-size: .85rem; margin-top: .2rem; }
   #qr { display: none; text-align: center; padding-top: 1rem; }
   #qr canvas, #qr img { margin: 0 auto; }
   #qr .who { font-size: 1.1rem; margin-bottom: .25rem; }
@@ -47,6 +54,13 @@
   <h1 id="h">On set</h1>
   <p class="sub" id="sub">Pick who you are shooting.</p>
 
+  <div id="top">
+    <button class="new" id="new">
+      <span>Someone new</span>
+      <span class="meta">Not in the list — short form, then straight to the agreement</span>
+    </button>
+  </div>
+
   <div id="list"><p class="msg">Loading…</p></div>
 
   <div id="qr">
@@ -63,10 +77,12 @@
 (function () {
   var KEY = new URLSearchParams(location.search).get('k') || '';
   var list = document.getElementById('list');
+  var top = document.getElementById('top');
   var qr = document.getElementById('qr');
   var sub = document.getElementById('sub');
 
   if (!KEY) {
+    top.style.display = 'none';
     list.innerHTML = '<p class="msg">Missing key. Use the bookmarked link.</p>';
     return;
   }
@@ -79,6 +95,7 @@
 
   async function load() {
     qr.style.display = 'none';
+    top.style.display = 'block';
     list.style.display = 'block';
     sub.textContent = 'Pick who you are shooting.';
 
@@ -110,6 +127,7 @@
   }
 
   async function create(id) {
+    top.style.display = 'none';
     list.innerHTML = '<p class="msg">Preparing…</p>';
     try {
       var res = await fetch('/.netlify/functions/on-set', {
@@ -120,25 +138,30 @@
       if (!res.ok) throw new Error('bad');
       var data = await res.json();
       if (!data.signUrl) throw new Error('no url');
-      show(data);
+      show(data.name, data.kind === 'schedule'
+        ? 'Schedule 1 — wardrobe and scope'
+        : 'Collaboration Agreement & Model Release', data.signUrl);
     } catch (e) {
       list.innerHTML = '<p class="msg">Could not prepare it. Tap back and try again.</p>';
       setTimeout(load, 2500);
     }
   }
 
-  function show(data) {
+  // No contract yet — this QR just points at the short intake form. She fills
+  // it and the agreement loads on her own phone, so nothing is created here.
+  document.getElementById('new').onclick = function () {
+    show('Someone new', 'Short form, then the agreement', location.origin + '/booking/new');
+  };
+
+  function show(who, what, target) {
+    top.style.display = 'none';
     list.style.display = 'none';
     qr.style.display = 'block';
     sub.textContent = 'Let her scan this.';
 
-    document.getElementById('qr-who').textContent = data.name;
-    document.getElementById('qr-what').textContent =
-      data.kind === 'schedule'
-        ? 'Schedule 1 — wardrobe and scope'
-        : 'Collaboration Agreement & Model Release';
+    document.getElementById('qr-who').textContent = who;
+    document.getElementById('qr-what').textContent = what;
 
-    var target = data.signUrl;
     var box = document.getElementById('qr-code');
     box.innerHTML = '';
     new QRCode(box, {
