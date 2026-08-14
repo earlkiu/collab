@@ -21,7 +21,7 @@
   main { max-width: 62rem; margin: 0 auto; padding: 4rem 1.5rem 5rem; }
   h1 { font-size: 1.75rem; font-weight: 400; margin: 0 0 .75rem; letter-spacing: -.01em; }
   p { color: var(--n600); line-height: 1.6; margin: 0 0 2.5rem; max-width: 34rem; }
-  #cal-inline { width: 100%; min-height: 40rem; overflow: auto; }
+  #cal-inline { width: 100%; min-height: 40rem; overflow: auto; display: none; }
   #frame { display: none; }
   #frame iframe { width: 100%; min-height: 46rem; border: 1px solid var(--n200); background: #fff; }
   .note { color: var(--n400); font-size: .9rem; margin-top: 2.5rem; }
@@ -29,8 +29,8 @@
 </head>
 <body>
 <main>
-  <h1 id="h">Pick a date</h1>
-  <p id="lede">Choose a day that works. The agreement comes straight after — nothing is confirmed until it is signed.</p>
+  <h1 id="h">One moment</h1>
+  <p id="lede">Checking your link.</p>
 
   <div id="cal-inline"></div>
   <div id="frame"></div>
@@ -39,60 +39,91 @@
 </main>
 
 <script>
-  // The Notion session id arrives on the link Earl sends.
-  var SESSION = new URLSearchParams(location.search).get('s') || '';
-  if (SESSION) sessionStorage.setItem('collab_session', SESSION);
-  else SESSION = sessionStorage.getItem('collab_session') || '';
+var SESSION = '';
+var BOOKER = null;
 
-  var h = document.getElementById('h');
-  var lede = document.getElementById('lede');
-  var note = document.getElementById('note');
+(function () {
+  var q = new URLSearchParams(location.search);
+  SESSION = q.get('s') || sessionStorage.getItem('collab_session') || '';
+})();
 
+function h() { return document.getElementById('h'); }
+function lede() { return document.getElementById('lede'); }
+
+function fail(title, text) {
+  h().textContent = title;
+  lede().textContent = text;
+  document.getElementById('cal-inline').style.display = 'none';
+}
+
+// The calendar does not render until Notion confirms this is a real, open
+// session. Without this, anyone who found the page could take a slot.
+(async function () {
   if (!SESSION) {
-    note.textContent =
-      'This link looks incomplete. Reply to the email you received and Earl will send a new one.';
+    fail('This link is incomplete',
+      'Reply to the email you received and Earl will send a new one.');
+    return;
   }
 
-  function fail(text) {
-    h.textContent = 'Something went wrong';
-    lede.textContent = text;
-    document.getElementById('cal-inline').style.display = 'none';
-  }
+  try {
+    var res = await fetch('/.netlify/functions/session-lookup?s=' + encodeURIComponent(SESSION));
+    var data = await res.json();
 
-  // Cal's success redirect is a paid feature. The embed's client-side event is
-  // not, so the agreement is swapped in here rather than on another page.
-  async function onBooked(uid) {
-    document.getElementById('cal-inline').style.display = 'none';
-    h.textContent = 'One moment';
-    lede.textContent = 'Preparing your agreement.';
-
-    if (!SESSION) {
-      fail('Your date is held, but we could not match it to your enquiry. Reply to Earl\u2019s email and he will sort it out.');
+    if (!res.ok) {
+      if (data.error === 'already_signed') {
+        fail('This is already done',
+          'Your date is booked and the agreement is signed. Nothing else is needed — check your inbox for the copy.');
+      } else if (data.error === 'closed') {
+        fail('This link is closed',
+          'Reply to Earl\u2019s email if you think that is wrong.');
+      } else {
+        fail('We could not find this',
+          'Reply to the email you received and Earl will send a new link.');
+      }
       return;
     }
 
-    try {
-      var res = await fetch('/.netlify/functions/create-contract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ s: SESSION, uid: uid || '' })
-      });
-      if (!res.ok) throw new Error('bad response');
-      var data = await res.json();
-      if (!data.signUrl) throw new Error('no url');
+    BOOKER = data;
+    sessionStorage.setItem('collab_session', SESSION);
 
-      h.textContent = 'Read this properly';
-      lede.textContent = 'It is short, and it is written to be understood rather than skimmed. Your date is held until you sign — nothing else is needed after this.';
+    h().textContent = 'Pick a date';
+    lede().textContent = 'Choose a day that works. The agreement comes straight after — nothing is confirmed until it is signed.';
+    document.getElementById('cal-inline').style.display = 'block';
 
-      var wrap = document.getElementById('frame');
-      var f = document.createElement('iframe');
-      f.src = data.signUrl + '?embedded=yes';
-      wrap.appendChild(f);
-      wrap.style.display = 'block';
-    } catch (e) {
-      fail('Your date is held. Reply to Earl\u2019s email and he will sort this out.');
-    }
+    startCal(data);
+  } catch (e) {
+    fail('Something went wrong', 'Try again in a moment, or reply to Earl\u2019s email.');
   }
+})();
+
+async function onBooked(uid) {
+  document.getElementById('cal-inline').style.display = 'none';
+  h().textContent = 'One moment';
+  lede().textContent = 'Preparing your agreement.';
+
+  try {
+    var res = await fetch('/.netlify/functions/create-contract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ s: SESSION, uid: uid || '' })
+    });
+    if (!res.ok) throw new Error('bad response');
+    var data = await res.json();
+    if (!data.signUrl) throw new Error('no url');
+
+    h().textContent = 'Read this properly';
+    lede().textContent = 'It is short, and it is written to be understood rather than skimmed. Your date is held until you sign — nothing else is needed after this.';
+
+    var wrap = document.getElementById('frame');
+    var f = document.createElement('iframe');
+    f.src = data.signUrl + '?embedded=yes';
+    wrap.appendChild(f);
+    wrap.style.display = 'block';
+  } catch (e) {
+    fail('Something went wrong',
+      'Your date is held. Reply to Earl\u2019s email and he will sort this out.');
+  }
+}
 </script>
 
 <script type="text/javascript">
@@ -120,26 +151,32 @@
     };
   })(window, "https://app.cal.com/embed/embed.js", "init");
 
-  Cal("init", "collab", { origin: "https://app.cal.com" });
-  Cal.ns.collab("inline", {
-    elementOrSelector: "#cal-inline",
-    calLink: "earlkiu/book-collab",
-    config: { layout: "month_view" }
-  });
-  Cal.ns.collab("ui", { hideEventTypeDetails: false, layout: "month_view" });
+  // Called only after the session checks out. Name and email come from Notion,
+  // so the booking email cannot diverge from the one on the contract.
+  function startCal(booker) {
+    Cal("init", "collab", { origin: "https://app.cal.com" });
+    Cal.ns.collab("inline", {
+      elementOrSelector: "#cal-inline",
+      calLink: "earlkiu/book-collab",
+      config: {
+        layout: "month_view",
+        name: booker.name || "",
+        email: booker.email || ""
+      }
+    });
+    Cal.ns.collab("ui", { hideEventTypeDetails: false, layout: "month_view" });
 
-  // Fires in the browser the moment the booking is taken. The payload shape has
-  // moved between Cal versions, so dig for the uid rather than trusting one path.
-  Cal.ns.collab("on", {
-    action: "bookingSuccessful",
-    callback: function (e) {
-      var d = (e && e.detail && e.detail.data) || {};
-      var b = d.booking || d;
-      var uid = b.uid || b.bookingUid || d.uid || '';
-      console.log('booking uid', uid);
-      onBooked(uid);
-    }
-  });
+    // Cal's success redirect is a paid feature. This event is not.
+    Cal.ns.collab("on", {
+      action: "bookingSuccessful",
+      callback: function (e) {
+        var d = (e && e.detail && e.detail.data) || {};
+        var b = d.booking || d;
+        var uid = b.uid || b.bookingUid || d.uid || '';
+        onBooked(uid);
+      }
+    });
+  }
 </script>
 </body>
 </html>
