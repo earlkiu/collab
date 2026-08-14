@@ -1,13 +1,13 @@
-&lt;!DOCTYPE html&gt;
-&lt;html lang="en"&gt;
-&lt;head&gt;
-&lt;meta charset="utf-8"&gt;
-&lt;meta name="viewport" content="width=device-width, initial-scale=1"&gt;
-&lt;meta name="robots" content="noindex, nofollow"&gt;
-&lt;title&gt;Book your session — Earl Kiu&lt;/title&gt;
-&lt;link rel="icon" type="image/svg+xml" href="/favicon.svg"&gt;
-&lt;link rel="stylesheet" href="https://use.typekit.net/pur8tye.css"&gt;
-&lt;style&gt;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Book your session — Earl Kiu</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="https://use.typekit.net/pur8tye.css">
+<style>
   :root {
     --n100: #F2F0ED; --n200: #DDDAD6; --n400: #7A7672;
     --n600: #1E1C1A; --n700: #100F0D;
@@ -25,20 +25,20 @@
   #frame { display: none; }
   #frame iframe { width: 100%; min-height: 46rem; border: 1px solid var(--n200); background: #fff; }
   .note { color: var(--n400); font-size: .9rem; margin-top: 2.5rem; }
-&lt;/style&gt;
-&lt;/head&gt;
-&lt;body&gt;
-&lt;main&gt;
-  &lt;h1 id="h"&gt;Pick a date&lt;/h1&gt;
-  &lt;p id="lede"&gt;Choose a day that works. The agreement comes straight after — nothing is confirmed until it is signed.&lt;/p&gt;
+</style>
+</head>
+<body>
+<main>
+  <h1 id="h">Pick a date</h1>
+  <p id="lede">Choose a day that works. The agreement comes straight after — nothing is confirmed until it is signed.</p>
 
-  &lt;div id="cal-inline"&gt;&lt;/div&gt;
-  &lt;div id="frame"&gt;&lt;/div&gt;
+  <div id="cal-inline"></div>
+  <div id="frame"></div>
 
-  &lt;p class="note" id="note"&gt;&lt;/p&gt;
-&lt;/main&gt;
+  <p class="note" id="note"></p>
+</main>
 
-&lt;script&gt;
+<script>
   // The Notion session id arrives on the link Earl sends.
   var SESSION = new URLSearchParams(location.search).get('s') || '';
   if (SESSION) sessionStorage.setItem('collab_session', SESSION);
@@ -93,9 +93,9 @@
       fail('Your date is held. Reply to Earl\u2019s email and he will sort this out.');
     }
   }
-&lt;/script&gt;
+</script>
 
-&lt;script type="text/javascript"&gt;
+<script type="text/javascript">
   (function (C, A, L) {
     let p = function (a, ar) { a.q.push(ar); };
     let d = C.document;
@@ -128,19 +128,18 @@
   });
   Cal.ns.collab("ui", { hideEventTypeDetails: false, layout: "month_view" });
 
-  // Fires in the browser the moment the booking is taken. The shape of the
-  // payload has moved around between Cal versions, so dig for the uid rather
-  // than trusting one path.
+  // Fires in the browser the moment the booking is taken. The payload shape has
+  // moved between Cal versions, so dig for the uid rather than trusting one path.
   Cal.ns.collab("on", {
     action: "bookingSuccessful",
     callback: function (e) {
-      var d = (e &amp;&amp; e.detail &amp;&amp; e.detail.data) || {};
+      var d = (e && e.detail && e.detail.data) || {};
       var b = d.booking || d;
       var uid = b.uid || b.bookingUid || d.uid || '';
       console.log('booking uid', uid);
       onBooked(uid);
     }
   });
-&lt;/script&gt;
-&lt;/body&gt;
-&lt;/html&gt;
+</script>
+</body>
+</html>
