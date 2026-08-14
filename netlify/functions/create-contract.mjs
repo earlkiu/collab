@@ -12,9 +12,9 @@
  *   CAL_API_KEY        — cal.com API key, never expires
  *   NOTION_TOKEN       — internal integration secret
  *
- * The Notion page id travels to eSignatures as `metadata` and comes back on the
- * contract-signed webhook. That is how the webhook knows which row to update,
- * and it is why no new Notion property is needed.
+ * Both ids travel to eSignatures as `metadata` in the form "<session>|<uid>"
+ * and come back on the contract-signed webhook. That is the join key between
+ * the three systems, and it is why neither Notion nor Cal needs a new field.
  */
 
 const ESIG = 'https://esignatures.com/api';
@@ -151,7 +151,7 @@ export default async (req) => {
     const contract = await esig('/contracts', {
       template_id: AGREEMENT,
       title: `Collaboration Agreement — ${name}`,
-      metadata: s,
+      metadata: `${s}|${uid || ''}`,
       test: TEST_MODE,
       locale: 'en-GB',
       expires_in_hours: '72',
