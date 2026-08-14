@@ -1,7 +1,0 @@
-      if (data.error === 'already_signed') {
-        fail('This is already done',
-          'Your date is booked and the agreement is signed. Nothing else is needed \u2014 check your inbox for the copy.');
-      } else if (data.error === 'expired') {
-        fail('This link has expired',
-          'Booking links stay open for five days. Reply to Earl\u2019s email and he will reopen it \u2014 this same link will start working again.');
-      } else if (data.error === 'closed') {
