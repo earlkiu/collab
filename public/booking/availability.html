@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="https://use.typekit.net/pur8tye.css">
 <style>
   :root {
-    --n100: #F2F0ED; --n200: #DDDAD6; --n400: #7A7672;
+    --n100: #F2F0ED; --n200: #DDDAD6; --n300: #B0ACA7; --n400: #7A7672;
     --n600: #1E1C1A; --n700: #100F0D;
     --font: 'artifex-hand-cf', Georgia, serif;
   }
@@ -19,25 +19,46 @@
     font-family: var(--font); -webkit-font-smoothing: antialiased;
     padding: 3rem 1.25rem 5rem;
   }
-  main { max-width: 34rem; margin: 0 auto; }
+  main { max-width: 26rem; margin: 0 auto; }
   h1 { font-size: 1.5rem; font-weight: 400; margin: 0 0 .5rem; letter-spacing: -.01em; }
   .sub { color: var(--n400); font-size: .95rem; line-height: 1.5; margin: 0 0 2.5rem; }
-  .month {
-    font-size: .8rem; letter-spacing: .08em; text-transform: uppercase;
-    color: var(--n400); margin: 2.25rem 0 .5rem;
+
+  .month + .month { margin-top: 2.75rem; }
+  .month h2 {
+    font-size: .8rem; font-weight: 400; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--n400);
+    margin: 0 0 .9rem; padding-bottom: .6rem;
+    border-bottom: 1px solid var(--n200);
   }
-  .month:first-of-type { margin-top: 0; }
-  .day {
-    display: flex; justify-content: space-between; align-items: baseline;
-    border-top: 1px solid var(--n200); padding: .85rem 0;
+
+  .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: .25rem; }
+  .dow {
+    text-align: center; font-size: .7rem; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--n300);
+    padding-bottom: .35rem;
   }
-  .day .d { font-size: 1.05rem; }
-  .day .w { color: var(--n400); font-size: .9rem; }
-  .day.part .d { color: var(--n600); }
-  .day.part .w::after { content: ' · partly booked'; }
-  .msg { color: var(--n400); line-height: 1.6; }
+  .cell {
+    aspect-ratio: 1 / 1; display: flex; align-items: center;
+    justify-content: center; font-size: .95rem; border-radius: 2px;
+  }
+  .cell.pad { visibility: hidden; }
+  .cell.off { color: var(--n300); }
+  .cell.open { color: var(--n700); background: #fff; border: 1px solid var(--n200); }
+  .cell.part { color: var(--n600); background: #fff; border: 1px dashed var(--n200); }
+
+  .key {
+    display: flex; gap: 1.25rem; flex-wrap: wrap;
+    margin-top: 2.5rem; color: var(--n400); font-size: .8rem;
+  }
+  .key span { display: flex; align-items: center; gap: .45rem; }
+  .swatch {
+    width: .85rem; height: .85rem; border-radius: 2px; display: inline-block;
+  }
+  .swatch.open { background: #fff; border: 1px solid var(--n200); }
+  .swatch.part { background: #fff; border: 1px dashed var(--n200); }
+
   footer {
-    margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--n200);
+    margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--n200);
     color: var(--n400); font-size: .85rem; line-height: 1.6;
   }
 </style>
@@ -47,7 +68,12 @@
   <h1>Open dates</h1>
   <p class="sub" id="sub">Loading…</p>
 
-  <div id="days"></div>
+  <div id="cal"></div>
+
+  <div class="key" id="key" hidden>
+    <span><i class="swatch open"></i> Free</span>
+    <span><i class="swatch part"></i> Partly booked</span>
+  </div>
 
   <footer id="foot"></footer>
 </main>
@@ -55,17 +81,66 @@
 <script>
 (function () {
   var sub = document.getElementById('sub');
-  var wrap = document.getElementById('days');
+  var cal = document.getElementById('cal');
+  var key = document.getElementById('key');
   var foot = document.getElementById('foot');
 
-  function parts(iso) {
-    var d = new Date(iso + 'T00:00:00+08:00');
-    var o = { timeZone: 'Asia/Kuala_Lumpur' };
-    return {
-      month: d.toLocaleDateString('en-GB', Object.assign({ month: 'long', year: 'numeric' }, o)),
-      date: d.toLocaleDateString('en-GB', Object.assign({ day: 'numeric', month: 'short' }, o)),
-      weekday: d.toLocaleDateString('en-GB', Object.assign({ weekday: 'long' }, o))
-    };
+  var DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  // Dates are handled as plain YYYY-MM-DD strings so nothing shifts timezone.
+  function ymd(y, m, d) {
+    return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  }
+
+  // Monday = 0 … Sunday = 6
+  function mondayIndex(y, m, d) {
+    return (new Date(Date.UTC(y, m, d)).getUTCDay() + 6) % 7;
+  }
+
+  function monthName(y, m) {
+    return new Date(Date.UTC(y, m, 1))
+      .toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  }
+
+  function drawMonth(y, m, state, fromISO, toISO) {
+    var wrap = document.createElement('section');
+    wrap.className = 'month';
+
+    var h = document.createElement('h2');
+    h.textContent = monthName(y, m);
+    wrap.appendChild(h);
+
+    var grid = document.createElement('div');
+    grid.className = 'grid';
+
+    DOW.forEach(function (d) {
+      var el = document.createElement('div');
+      el.className = 'dow';
+      el.textContent = d;
+      grid.appendChild(el);
+    });
+
+    var lead = mondayIndex(y, m, 1);
+    for (var i = 0; i < lead; i++) {
+      var pad = document.createElement('div');
+      pad.className = 'cell pad';
+      grid.appendChild(pad);
+    }
+
+    var last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    for (var d = 1; d <= last; d++) {
+      var iso = ymd(y, m, d);
+      var cell = document.createElement('div');
+      var s = state[iso];
+
+      cell.className = 'cell ' + (s === 'clear' ? 'open' : s === 'part' ? 'part' : 'off');
+      cell.textContent = d;
+      if (iso < fromISO || iso > toISO) cell.className = 'cell off';
+      grid.appendChild(cell);
+    }
+
+    wrap.appendChild(grid);
+    return wrap;
   }
 
   fetch('/.netlify/functions/availability')
@@ -81,24 +156,20 @@
 
       sub.textContent = 'Dates that can still take a full session, over the next two months. Kuala Lumpur time.';
 
-      var month = '';
-      days.forEach(function (d) {
-        var p = parts(d.date);
+      var state = {};
+      days.forEach(function (d) { state[d.date] = d.clear ? 'clear' : 'part'; });
 
-        if (p.month !== month) {
-          month = p.month;
-          var m = document.createElement('p');
-          m.className = 'month';
-          m.textContent = month;
-          wrap.appendChild(m);
-        }
+      var from = res.d.from, to = res.d.to;
+      var y = +from.slice(0, 4), m = +from.slice(5, 7) - 1;
+      var endY = +to.slice(0, 4), endM = +to.slice(5, 7) - 1;
 
-        var row = document.createElement('div');
-        row.className = 'day' + (d.clear ? '' : ' part');
-        row.innerHTML = '<span class="d">' + p.date + '</span><span class="w">' + p.weekday + '</span>';
-        wrap.appendChild(row);
-      });
+      while (y < endY || (y === endY && m <= endM)) {
+        cal.appendChild(drawMonth(y, m, state, from, to));
+        m++;
+        if (m > 11) { m = 0; y++; }
+      }
 
+      key.hidden = false;
       foot.textContent = 'Nothing can be booked from this page. Once a date is agreed, Earl sends a booking link.';
     })
     .catch(function () {
