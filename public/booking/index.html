@@ -1,13 +1,13 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow">
-<title>Book your session — Earl Kiu</title>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="stylesheet" href="https://use.typekit.net/pur8tye.css">
-<style>
+&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+&lt;meta charset="utf-8"&gt;
+&lt;meta name="viewport" content="width=device-width, initial-scale=1"&gt;
+&lt;meta name="robots" content="noindex, nofollow"&gt;
+&lt;title&gt;Book your session — Earl Kiu&lt;/title&gt;
+&lt;link rel="icon" type="image/svg+xml" href="/favicon.svg"&gt;
+&lt;link rel="stylesheet" href="https://use.typekit.net/pur8tye.css"&gt;
+&lt;style&gt;
   :root {
     --n100: #F2F0ED; --n200: #DDDAD6; --n400: #7A7672;
     --n600: #1E1C1A; --n700: #100F0D;
@@ -22,30 +22,80 @@
   h1 { font-size: 1.75rem; font-weight: 400; margin: 0 0 .75rem; letter-spacing: -.01em; }
   p { color: var(--n600); line-height: 1.6; margin: 0 0 2.5rem; max-width: 34rem; }
   #cal-inline { width: 100%; min-height: 40rem; overflow: auto; }
+  #frame { display: none; }
+  #frame iframe { width: 100%; min-height: 46rem; border: 1px solid var(--n200); background: #fff; }
   .note { color: var(--n400); font-size: .9rem; margin-top: 2.5rem; }
-</style>
-</head>
-<body>
-<main>
-  <h1>Pick a date</h1>
-  <p>Choose a day that works. The agreement comes next, on the following screen — nothing is confirmed until it is signed.</p>
+&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;main&gt;
+  &lt;h1 id="h"&gt;Pick a date&lt;/h1&gt;
+  &lt;p id="lede"&gt;Choose a day that works. The agreement comes straight after — nothing is confirmed until it is signed.&lt;/p&gt;
 
-  <div id="cal-inline"></div>
+  &lt;div id="cal-inline"&gt;&lt;/div&gt;
+  &lt;div id="frame"&gt;&lt;/div&gt;
 
-  <p class="note" id="note"></p>
-</main>
+  &lt;p class="note" id="note"&gt;&lt;/p&gt;
+&lt;/main&gt;
 
-<script>
-  // The Notion session id arrives on the link Earl sends and has to survive the
-  // trip through Cal. Params are forwarded on success, but sessionStorage is the
-  // belt to that braces.
-  var s = new URLSearchParams(location.search).get('s');
-  if (s) sessionStorage.setItem('collab_session', s);
-  else document.getElementById('note').textContent =
-    'This link looks incomplete. Reply to the email you received and Earl will send a new one.';
-</script>
+&lt;script&gt;
+  // The Notion session id arrives on the link Earl sends.
+  var SESSION = new URLSearchParams(location.search).get('s') || '';
+  if (SESSION) sessionStorage.setItem('collab_session', SESSION);
+  else SESSION = sessionStorage.getItem('collab_session') || '';
 
-<script type="text/javascript">
+  var h = document.getElementById('h');
+  var lede = document.getElementById('lede');
+  var note = document.getElementById('note');
+
+  if (!SESSION) {
+    note.textContent =
+      'This link looks incomplete. Reply to the email you received and Earl will send a new one.';
+  }
+
+  function fail(text) {
+    h.textContent = 'Something went wrong';
+    lede.textContent = text;
+    document.getElementById('cal-inline').style.display = 'none';
+  }
+
+  // Cal's success redirect is a paid feature. The embed's client-side event is
+  // not, so the agreement is swapped in here rather than on another page.
+  async function onBooked(uid) {
+    document.getElementById('cal-inline').style.display = 'none';
+    h.textContent = 'One moment';
+    lede.textContent = 'Preparing your agreement.';
+
+    if (!SESSION) {
+      fail('Your date is held, but we could not match it to your enquiry. Reply to Earl\u2019s email and he will sort it out.');
+      return;
+    }
+
+    try {
+      var res = await fetch('/.netlify/functions/create-contract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ s: SESSION, uid: uid || '' })
+      });
+      if (!res.ok) throw new Error('bad response');
+      var data = await res.json();
+      if (!data.signUrl) throw new Error('no url');
+
+      h.textContent = 'Read this properly';
+      lede.textContent = 'It is short, and it is written to be understood rather than skimmed. Your date is held until you sign — nothing else is needed after this.';
+
+      var wrap = document.getElementById('frame');
+      var f = document.createElement('iframe');
+      f.src = data.signUrl + '?embedded=yes';
+      wrap.appendChild(f);
+      wrap.style.display = 'block';
+    } catch (e) {
+      fail('Your date is held. Reply to Earl\u2019s email and he will sort this out.');
+    }
+  }
+&lt;/script&gt;
+
+&lt;script type="text/javascript"&gt;
   (function (C, A, L) {
     let p = function (a, ar) { a.q.push(ar); };
     let d = C.document;
@@ -77,6 +127,20 @@
     config: { layout: "month_view" }
   });
   Cal.ns.collab("ui", { hideEventTypeDetails: false, layout: "month_view" });
-</script>
-</body>
-</html>
+
+  // Fires in the browser the moment the booking is taken. The shape of the
+  // payload has moved around between Cal versions, so dig for the uid rather
+  // than trusting one path.
+  Cal.ns.collab("on", {
+    action: "bookingSuccessful",
+    callback: function (e) {
+      var d = (e &amp;&amp; e.detail &amp;&amp; e.detail.data) || {};
+      var b = d.booking || d;
+      var uid = b.uid || b.bookingUid || d.uid || '';
+      console.log('booking uid', uid);
+      onBooked(uid);
+    }
+  });
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
