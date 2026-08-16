@@ -37,7 +37,7 @@ const NEEDS_SCHEDULE = new Set([
   'Full nudity',
 ]);
 
-const TEST_MODE = 'yes';
+const TEST_MODE = 'no';
 
 const notionHeaders = () => ({
   Authorization: `Bearer ${process.env.NOTION_TOKEN}`,

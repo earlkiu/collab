@@ -34,7 +34,7 @@ const NEEDS_SCHEDULE = new Set([
 ]);
 
 // While testing. Set to 'no' to send live contracts at $0.49 each.
-const TEST_MODE = 'yes';
+const TEST_MODE = 'no';
 
 const notionHeaders = () => ({
   Authorization: `Bearer ${process.env.NOTION_TOKEN}`,
