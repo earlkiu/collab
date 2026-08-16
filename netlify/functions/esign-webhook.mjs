@@ -1,7 +1,7 @@
 /**
  * eSignatures.com → Notion
  *
- * Webhook URL, set on the eSignatures.com API page once this is deployed:
+ * Webhook URL, set on the eSignatures.com API page:
  *   https://collab.earlkiu.com/.netlify/functions/esign-webhook
  *
  * On contract-signed:
@@ -18,11 +18,10 @@
  *               their mind about wardrobe. The agreement stays as signed; this
  *               only records the level agreed and updates Comfort level.
  *
- * NOT YET WIRED: the signed PDF. `contract_pdf_url` expires in three days and
- * eSignatures.com only retains contracts for three years, while the release is
- * perpetual — so the Drive copy is the actual record. That needs a Google
- * service account with the target folder shared to it. Until then the URL is
- * logged and the Release property stays empty rather than holding a dead link.
+ * The signed PDF is archived to Drive by the eSignatures.com Drive integration,
+ * which is the permanent record. Notion holds the permalink only —
+ * esignatures.com/contracts/<id>, which never expires, unlike
+ * `contract_pdf_url` in the payload, which dies after three days.
  *
  * Environment variables:
  *   ESIGNATURES_TOKEN  — doubles as the HMAC key
@@ -34,6 +33,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const NOTION_API = 'https://api.notion.com/v1';
 const NOTION_VERSION = '2022-06-28';
+
+const contractUrl = (id) => `https://esignatures.com/contracts/${id}`;
 
 const notionHeaders = () => ({
   Authorization: `Bearer ${process.env.NOTION_TOKEN}`,
@@ -131,14 +132,15 @@ export default async (req) => {
     const page = await notion(`/pages/${sessionId}`);
 
     if (kind === 'schedule') {
-      // A supplement. Never touches Release signed — the original agreement is
-      // what that flag refers to, and it is already true.
+      // A supplement. Never touches Release signed or Release — the original
+      // agreement is what those refer to, and the link belongs to it.
       const blocks = [
         heading('Schedule 1 signed on set'),
         paragraph(`Contract ${contract.id} · ${today}`),
         paragraph(`Name as per NRIC or passport: ${f.model_name || '—'}`),
         paragraph(`NRIC or passport: ${f.model_id || '—'}`),
         paragraph(`Wardrobe level agreed: ${level || '—'}`),
+        paragraph(contractUrl(contract.id)),
       ];
 
       await notion(`/blocks/${sessionId}/children`, {
@@ -153,7 +155,7 @@ export default async (req) => {
         });
       }
 
-      console.log(`schedule ${contract.id} signed · session ${sessionId} · ${level} · pdf ${contract.contract_pdf_url}`);
+      console.log(`schedule ${contract.id} signed · session ${sessionId} · ${level}`);
       return new Response('OK', { status: 200 });
     }
 
@@ -170,6 +172,7 @@ export default async (req) => {
         properties: {
           'Release signed': { checkbox: true },
           'Release signed on': { date: { start: today } },
+          Release: { url: contractUrl(contract.id) },
         },
       }),
     });
@@ -193,9 +196,7 @@ export default async (req) => {
     // The booking sits pending until this point. Signature is the confirmation.
     await confirmBooking(bookingUid);
 
-    // The PDF link is live for three days only. Logged so it is recoverable
-    // by hand until the Drive copy is built.
-    console.log(`contract ${contract.id} signed · session ${sessionId} · pdf ${contract.contract_pdf_url}`);
+    console.log(`contract ${contract.id} signed · session ${sessionId}`);
 
     return new Response('OK', { status: 200 });
   } catch (err) {
