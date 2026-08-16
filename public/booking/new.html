@@ -134,6 +134,13 @@
     return d <= cut;
   }
 
+  $('dob').addEventListener('input', function () {
+    var v = this.value.replace(/\D/g, '').slice(0, 8);
+    if (v.length > 4) v = v.slice(0, 2) + '/' + v.slice(2, 4) + '/' + v.slice(4);
+    else if (v.length > 2) v = v.slice(0, 2) + '/' + v.slice(2);
+    this.value = v;
+  });
+  
   $('go').onclick = function () {
     var err = $('err');
     err.style.display = 'none';
