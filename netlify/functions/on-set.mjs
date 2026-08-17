@@ -21,7 +21,8 @@
  *   ESIGNATURES_TOKEN
  *   NOTION_TOKEN
  *   NOTION_SESSIONS_DB
- *   ESIGN_TEST_MODE    — optional; 'yes' sends free test contracts
+ *   ESIGN_TEST_EMAILS  — optional; extra addresses that always send free
+ *   ESIGN_TEST_MODE    — optional; 'yes' forces every contract free
  */
 
 const ESIG = 'https://esignatures.com/api';
@@ -38,10 +39,23 @@ const NEEDS_SCHEDULE = new Set([
   'Full nudity',
 ]);
 
-// Live by default. Real contracts cost $0.49 each, charged on send, not on
-// signature. Set ESIGN_TEST_MODE = 'yes' in Netlify — scoped to Deploy previews
-// and Branch deploys — to send free test contracts. Takes effect next deploy.
-const TEST_MODE = process.env.ESIGN_TEST_MODE === 'yes' ? 'yes' : 'no';
+/* ---------- test mode ---------- */
+
+// Decided per contract, by who is signing it. Contracts to these addresses are
+// always free; a real model is never one of them, so there is no switch to
+// leave on by accident. See create-contract.mjs for the full reasoning.
+const TEST_EMAILS = new Set(
+  ['itsme@earlkiu.com', 'hello@earlkiu.com']
+    .concat((process.env.ESIGN_TEST_EMAILS || '').split(','))
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+// Blunt override — every contract free. Deploy previews only, never Production.
+const FORCE_TEST = process.env.ESIGN_TEST_MODE === 'yes';
+
+const testMode = (email) =>
+  (FORCE_TEST || TEST_EMAILS.has(String(email || '').trim().toLowerCase()) ? 'yes' : 'no');
 
 const notionHeaders = () => ({
   Authorization: `Bearer ${process.env.NOTION_TOKEN}`,
@@ -163,6 +177,7 @@ export default async (req) => {
     const addr = plain(pp.Email);
     if (!addr) throw new Error('Person has no email');
 
+    const isTest = testMode(addr);
     const alreadySigned = p['Release signed']?.checkbox === true;
     const today = todayKL();
     const shootISO = plain(p['Shoot date']) || today;
@@ -209,7 +224,7 @@ export default async (req) => {
 
     const contract = await esig('/contracts', {
       ...payload,
-      test: TEST_MODE,
+      test: isTest,
       locale: 'en-GB',
       expires_in_hours: '24',
       signers: [{
@@ -223,7 +238,7 @@ export default async (req) => {
     const signer = contract.data?.contract?.signers?.[0];
     if (!signer?.sign_page_url) throw new Error('No sign page returned');
 
-    console.log(`on-set ${alreadySigned ? 'schedule' : 'agreement'} → ${name} · ${contract.data.contract.id}${TEST_MODE === 'yes' ? ' · TEST' : ''}`);
+    console.log(`on-set ${alreadySigned ? 'schedule' : 'agreement'} → ${name} · ${contract.data.contract.id}${isTest === 'yes' ? ' · TEST' : ''}`);
 
     return json({
       signUrl: signer.sign_page_url,
