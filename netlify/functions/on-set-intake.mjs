@@ -17,6 +17,7 @@
  *   NOTION_TOKEN
  *   NOTION_PEOPLE_DB
  *   NOTION_SESSIONS_DB
+ *   ESIGN_TEST_MODE    — optional; 'yes' sends free test contracts
  */
 
 const ESIG = 'https://esignatures.com/api';
@@ -40,7 +41,10 @@ const VALID_COMFORT = new Set([
   'Full nudity',
 ]);
 
-const TEST_MODE = 'no';
+// Live by default. Real contracts cost $0.49 each, charged on send, not on
+// signature. Set ESIGN_TEST_MODE = 'yes' in Netlify — scoped to Deploy previews
+// and Branch deploys — to send free test contracts. Takes effect next deploy.
+const TEST_MODE = process.env.ESIGN_TEST_MODE === 'yes' ? 'yes' : 'no';
 
 const notionHeaders = () => ({
   Authorization: `Bearer ${process.env.NOTION_TOKEN}`,
@@ -230,7 +234,7 @@ export default async (req) => {
     const signer = contract.data?.contract?.signers?.[0];
     if (!signer?.sign_page_url) throw new Error('No sign page returned');
 
-    console.log(`on-set intake → ${name} <${addr}> · ${comfort} · session ${session.id}`);
+    console.log(`on-set intake → ${name} <${addr}> · ${comfort} · session ${session.id}${TEST_MODE === 'yes' ? ' · TEST' : ''}`);
 
     return json({ signUrl: signer.sign_page_url });
   } catch (err) {
