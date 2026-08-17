@@ -11,6 +11,7 @@
  *   ESIGNATURES_TOKEN  — Secret Token from the eSignatures.com API page
  *   CAL_API_KEY        — cal.com API key, never expires
  *   NOTION_TOKEN       — internal integration secret
+ *   ESIGN_TEST_MODE    — optional; 'yes' sends free test contracts
  *
  * Both ids travel to eSignatures as `metadata` in the form "<session>|<uid>"
  * and come back on the contract-signed webhook. That is the join key between
@@ -33,8 +34,13 @@ const NEEDS_SCHEDULE = new Set([
   'Full nudity',
 ]);
 
-// While testing. Set to 'no' to send live contracts at $0.49 each.
-const TEST_MODE = 'no';
+// Live by default. Real contracts cost $0.49 each, charged on send, not on
+// signature — an abandoned booking still bills.
+//
+// To test: set ESIGN_TEST_MODE = 'yes' in Netlify, scoped to Deploy previews
+// and Branch deploys, so production is never accidentally left in test mode.
+// Env var changes only take effect on the next deploy.
+const TEST_MODE = process.env.ESIGN_TEST_MODE === 'yes' ? 'yes' : 'no';
 
 const notionHeaders = () => ({
   Authorization: `Bearer ${process.env.NOTION_TOKEN}`,
@@ -183,7 +189,7 @@ export default async (req) => {
       body: JSON.stringify({ properties: updates }),
     });
 
-    console.log(`contract ${contract.data.contract.id} → ${name} <${addr}> · schedule ${NEEDS_SCHEDULE.has(comfort) ? 'attached' : 'omitted'}`);
+    console.log(`contract ${contract.data.contract.id} → ${name} <${addr}> · schedule ${NEEDS_SCHEDULE.has(comfort) ? 'attached' : 'omitted'}${TEST_MODE === 'yes' ? ' · TEST' : ''}`);
 
     return new Response(JSON.stringify({ signUrl: signer.sign_page_url }), {
       status: 200,
