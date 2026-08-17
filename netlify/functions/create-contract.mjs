@@ -11,7 +11,8 @@
  *   ESIGNATURES_TOKEN  — Secret Token from the eSignatures.com API page
  *   CAL_API_KEY        — cal.com API key, never expires
  *   NOTION_TOKEN       — internal integration secret
- *   ESIGN_TEST_MODE    — optional; 'yes' sends free test contracts
+ *   ESIGN_TEST_EMAILS  — optional; extra addresses that always send free
+ *   ESIGN_TEST_MODE    — optional; 'yes' forces every contract free
  *
  * Both ids travel to eSignatures as `metadata` in the form "<session>|<uid>"
  * and come back on the contract-signed webhook. That is the join key between
@@ -34,13 +35,29 @@ const NEEDS_SCHEDULE = new Set([
   'Full nudity',
 ]);
 
-// Live by default. Real contracts cost $0.49 each, charged on send, not on
-// signature — an abandoned booking still bills.
+/* ---------- test mode ---------- */
+
+// Live contracts cost $0.49 each, charged on send, not on signature — an
+// abandoned booking still bills. Test contracts are free but carry no legal
+// weight.
 //
-// To test: set ESIGN_TEST_MODE = 'yes' in Netlify, scoped to Deploy previews
-// and Branch deploys, so production is never accidentally left in test mode.
-// Env var changes only take effect on the next deploy.
-const TEST_MODE = process.env.ESIGN_TEST_MODE === 'yes' ? 'yes' : 'no';
+// Test mode is decided per contract, by who is signing it. A contract addressed
+// to one of these is always free; a real model is never one of them, so there is
+// no switch to leave on by accident and nothing to redeploy to toggle. To run
+// the whole flow end to end on production, book as yourself.
+const TEST_EMAILS = new Set(
+  ['itsme@earlkiu.com', 'hello@earlkiu.com']
+    .concat((process.env.ESIGN_TEST_EMAILS || '').split(','))
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+// Blunt override — every contract free, whoever it goes to. For deploy previews
+// and branch deploys only. Never set this on Production.
+const FORCE_TEST = process.env.ESIGN_TEST_MODE === 'yes';
+
+const testMode = (email) =>
+  (FORCE_TEST || TEST_EMAILS.has(String(email || '').trim().toLowerCase()) ? 'yes' : 'no');
 
 const notionHeaders = () => ({
   Authorization: `Bearer ${process.env.NOTION_TOKEN}`,
@@ -138,6 +155,7 @@ export default async (req) => {
     const addr = plain(pp.Email);
     if (!addr) throw new Error('Person has no email');
 
+    const isTest = testMode(addr);
     const comfort = plain(p['Comfort level']);
     const booking = await calBooking(uid);
     const shootISO = booking?.start || plain(p['Shoot date']);
@@ -158,7 +176,7 @@ export default async (req) => {
       template_id: AGREEMENT,
       title: `Collaboration Agreement — ${name}`,
       metadata: `${s}|${uid || ''}`,
-      test: TEST_MODE,
+      test: isTest,
       locale: 'en-GB',
       expires_in_hours: '72',
       placeholder_fields: placeholders,
@@ -189,7 +207,7 @@ export default async (req) => {
       body: JSON.stringify({ properties: updates }),
     });
 
-    console.log(`contract ${contract.data.contract.id} → ${name} <${addr}> · schedule ${NEEDS_SCHEDULE.has(comfort) ? 'attached' : 'omitted'}${TEST_MODE === 'yes' ? ' · TEST' : ''}`);
+    console.log(`contract ${contract.data.contract.id} → ${name} <${addr}> · schedule ${NEEDS_SCHEDULE.has(comfort) ? 'attached' : 'omitted'}${isTest === 'yes' ? ' · TEST' : ''}`);
 
     return new Response(JSON.stringify({ signUrl: signer.sign_page_url }), {
       status: 200,
