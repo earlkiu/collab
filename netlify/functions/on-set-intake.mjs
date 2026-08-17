@@ -17,6 +17,8 @@
  *   NOTION_TOKEN
  *   NOTION_PEOPLE_DB
  *   NOTION_SESSIONS_DB
+ *   ESIGN_TEST_EMAILS  — optional; extra addresses that always send free
+ *   ESIGN_TEST_MODE    — optional; 'yes' forces every contract free
  */
 
 const ESIG = 'https://esignatures.com/api';
@@ -40,7 +42,23 @@ const VALID_COMFORT = new Set([
   'Full nudity',
 ]);
 
-const TEST_MODE = 'no';
+/* ---------- test mode ---------- */
+
+// Decided per contract, by who is signing it. Contracts to these addresses are
+// always free; a real model is never one of them, so there is no switch to
+// leave on by accident. See create-contract.mjs for the full reasoning.
+const TEST_EMAILS = new Set(
+  ['itsme@earlkiu.com', 'hello@earlkiu.com']
+    .concat((process.env.ESIGN_TEST_EMAILS || '').split(','))
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+// Blunt override — every contract free. Deploy previews only, never Production.
+const FORCE_TEST = process.env.ESIGN_TEST_MODE === 'yes';
+
+const testMode = (email) =>
+  (FORCE_TEST || TEST_EMAILS.has(String(email || '').trim().toLowerCase()) ? 'yes' : 'no');
 
 const notionHeaders = () => ({
   Authorization: `Bearer ${process.env.NOTION_TOKEN}`,
@@ -141,6 +159,7 @@ export default async (req) => {
     return json({ error: 'Missing consent' }, 400);
   }
 
+  const isTest = testMode(addr);
   const today = todayKL();
 
   try {
@@ -191,7 +210,9 @@ export default async (req) => {
           object: 'block',
           type: 'paragraph',
           paragraph: {
-            rich_text: [{ text: { content: 'Signed up on set. Short intake form, not the full collab form — no photographs, references or self-description were collected.' } }],
+            rich_text: [{ text: { content: isTest === 'yes'
+              ? 'TEST RUN — created by an on-set intake using a test address. The contract is a free test contract and has no legal weight. Safe to delete.'
+              : 'Signed up on set. Short intake form, not the full collab form — no photographs, references or self-description were collected.' } }],
           },
         }],
       }),
@@ -201,7 +222,7 @@ export default async (req) => {
       template_id: AGREEMENT,
       title: `Collaboration Agreement — ${name}`,
       metadata: `${session.id}||agreement`,
-      test: TEST_MODE,
+      test: isTest,
       locale: 'en-GB',
       expires_in_hours: '24',
       placeholder_fields: [
@@ -230,7 +251,7 @@ export default async (req) => {
     const signer = contract.data?.contract?.signers?.[0];
     if (!signer?.sign_page_url) throw new Error('No sign page returned');
 
-    console.log(`on-set intake → ${name} <${addr}> · ${comfort} · session ${session.id}`);
+    console.log(`on-set intake → ${name} <${addr}> · ${comfort} · session ${session.id}${isTest === 'yes' ? ' · TEST' : ''}`);
 
     return json({ signUrl: signer.sign_page_url });
   } catch (err) {
