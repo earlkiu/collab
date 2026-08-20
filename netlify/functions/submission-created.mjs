@@ -8,7 +8,19 @@
  *   1. Match the submitter against the People database by email
  *   2. Create the person if there is no match, reuse them if there is
  *   3. Create a Session row of type "Collab", linked to that person
- *   4. Write the long-form answers into the session page body
+ *   4. Append who-she-is and her photographs to the PERSON page body
+ *   5. Write shoot-facing answers into the session page body
+ *
+ * Where the long answers go, and why:
+ *   The application describes the person, not the shoot. It belongs on the
+ *   person, appended under a dated heading each time she applies — never
+ *   overwritten, because the change between applications is the interesting
+ *   part. The session page body is left for the moodboard, references and
+ *   shoot notes.
+ *
+ * `Limits` is written to the PROPERTY as well as the body. create-contract
+ * reads the property for `session_limits` on the agreement; before this it
+ * only ever existed in the body, so every contract said "None stated".
  *
  * Required environment variables (Netlify → Site configuration → Environment variables):
  *   NOTION_TOKEN        — internal integration secret from notion.so/my-integrations
@@ -63,9 +75,24 @@ const heading = (content) => ({
   heading_3: { rich_text: [{ text: { content } }] },
 });
 
+const divider = () => ({ object: 'block', type: 'divider', divider: {} });
+
+const stamp = (content) => ({
+  object: 'block',
+  type: 'heading_2',
+  heading_2: { rich_text: [{ text: { content } }] },
+});
+
 function section(label, value) {
   if (!text(value)) return [];
   return [heading(label), paragraph(text(value))];
+}
+
+function prettyDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur',
+  });
 }
 
 // File fields arrive either as a URL string or as an object carrying the URL.
@@ -126,6 +153,16 @@ async function createPerson(d, fullName) {
   return page.id;
 }
 
+// Append, never overwrite. A second application a year later is a second entry;
+// the difference between them is the point.
+async function appendToPerson(personId, blocks) {
+  if (!blocks.length) return;
+  await notion(`/blocks/${personId}/children`, {
+    method: 'PATCH',
+    body: JSON.stringify({ children: blocks.slice(0, 100) }),
+  });
+}
+
 /* ---------- handler ---------- */
 
 export default async (req) => {
@@ -151,12 +188,10 @@ export default async (req) => {
     const isNew = !personId;
     if (!personId) personId = await createPerson({ ...d, Email: addr }, fullName);
 
-    // 3 — the session
+    // 3 — the session. Shoot-facing answers only.
     const sessionTitle = `${fullName} · Collab · ${submitted.slice(0, 7)}`;
 
-    const body = [
-      ...section('Who they are', d['Who they are']),
-      ...photoSection(d),
+    const sessionBody = [
       ...section('References', d.References),
       ...section('Limits', d.Limits),
     ];
@@ -172,6 +207,9 @@ export default async (req) => {
           Status: select('New'),
           Source: select('Collab form'),
           Submitted: date(submitted),
+          // create-contract reads this property for `session_limits` on the
+          // agreement. Body text alone left every contract saying "None stated".
+          Limits: richText(d.Limits),
           'Comfort level': select(d['Comfort level']),
           Experience: select(d.Experience),
           'Heard via': select(d['How they found it']),
@@ -181,9 +219,28 @@ export default async (req) => {
           'Consent — age': checkbox(d['Age confirmation']),
           'Consent — contact': checkbox(d['Contact consent']),
         }),
-        children: body.length ? body : undefined,
+        children: sessionBody.length ? sessionBody : undefined,
       }),
     });
+
+    // 4 — the application itself goes on the person, appended and dated.
+    // Best effort, and last: the session row is the thing that must not be lost,
+    // so a failure here leaves everything before it intact.
+    try {
+      const application = [
+        ...section('Who they are', d['Who they are']),
+        ...photoSection(d),
+      ];
+      if (application.length) {
+        await appendToPerson(personId, [
+          divider(),
+          stamp(`Application — ${prettyDate(submitted)}`),
+          ...application,
+        ]);
+      }
+    } catch (err) {
+      console.error(`person body append failed for ${addr}:`, err.message);
+    }
 
     console.log(`collab → ${fullName} <${addr}> — person ${isNew ? 'created' : 'matched'}`);
     return new Response('OK', { status: 200 });
