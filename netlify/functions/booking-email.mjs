@@ -101,7 +101,7 @@ ${link}
 
 Choose a time that suits you, and the agreement loads on the same page right after — read it properly, then sign. A few minutes, start to finish.
 
-The link is open until ${until}. If it lapses before you get to it, reply here and I'll reopen it.
+The link is open through ${until}. If it lapses before you get to it, reply here and I'll reopen it.
 
 Earl Kiu
 Editorial · Fashion · Portrait Photographer
@@ -170,12 +170,24 @@ export default async () => {
 
       // Written only after the send returns. If this write fails the next run
       // sends again — a duplicate email is the safer direction to fail in.
+      //
+      // The guard gets its own PATCH, with nothing else in it to fail on. It
+      // used to share one with `Booking email sent on`, so a rejected date
+      // took the checkbox down with it — and a validation error is
+      // deterministic, so that is not one duplicate but an email every hour
+      // until the age gate closes the window.
       await notion(`/pages/${row.id}`, 'PATCH', {
-        properties: {
-          'Booking email sent': { checkbox: true },
-          'Booking email sent on': { date: { start: kl(new Date()), is_datetime: 0 } },
-        },
+        properties: { 'Booking email sent': { checkbox: true } },
       });
+
+      // Record only. Nothing reads it, so a failure here must not re-arm the send.
+      try {
+        await notion(`/pages/${row.id}`, 'PATCH', {
+          properties: { 'Booking email sent on': { date: { start: kl(new Date()) } } },
+        });
+      } catch (err) {
+        console.error(`booking email sent-on write failed for ${row.id}:`, err.message);
+      }
 
       sent++;
     } catch (err) {
