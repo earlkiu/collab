@@ -5,12 +5,14 @@
  *
  * 1. The booking link, once, when Earl sets `Booking link sent` on a session
  *    row and the `Booking email sent` checkbox is still false.
- * 2. A single nudge on day three, if she still hasn't signed.
+ * 2. A single nudge, three days after that first email actually went out, if
+ *    she still hasn't signed and the link hasn't lapsed.
  *
- * The checkboxes are the guards, not the date. The date is edited — typos get
- * corrected, and reopening a lapsed window means setting it to today again.
- * Firing on the date alone would put a live email in front of a client on
- * every one of those edits. To deliberately re-send either: clear its checkbox.
+ * The checkboxes are the guards, not the dates. `Booking link sent` gets
+ * edited — typos corrected, and reopening a lapsed window means setting it to
+ * today again. Firing on a date alone would put a live email in front of a
+ * client on every one of those edits. To deliberately re-send either: clear
+ * its checkbox.
  *
  * The email is a durable record, not a substitute for the DM. A message
  * gets read and forgotten; the email is what she can find again on Thursday.
@@ -35,11 +37,10 @@ const NOTION_VERSION = '2022-06-28';
 // TEST_EMAILS is duplicated across create-contract, on-set and on-set-intake.
 const WINDOW_DAYS = 5;
 
-// The nudge goes on day three, and only on day three. Not `>=`: with the
-// checkbox that would be redundant, but an exact match means a failed
-// checkbox write costs one duplicate on one day rather than a nudge every
-// hour until the window closes.
-const NUDGE_DAY = 3;
+// Days after the first email — not after `Booking link sent`. The two differ
+// whenever the link date is backdated or the first send is delayed, and what
+// she experiences is the gap since the last thing that landed in her inbox.
+const NUDGE_AFTER_DAYS = 3;
 
 const FROM = 'Earl Kiu <hello@earlkiu.com>';
 const BOOKING_BASE = 'https://collab.earlkiu.com/booking';
@@ -81,13 +82,19 @@ const checked = (p) => Boolean(p && p.type === 'checkbox' && p.checkbox);
 // 8am MYT would otherwise be dated to the previous day.
 const kl = (d) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });
 
-// Whole days elapsed since the link was sent, counted in KL. Same arithmetic
-// as session-lookup, deliberately.
+// Whole days elapsed since a KL date. Same arithmetic as session-lookup,
+// deliberately.
 function daysSince(iso) {
-  const sent = new Date(`${iso.slice(0, 10)}T00:00:00+08:00`);
-  if (Number.isNaN(sent.getTime())) return null;
+  const from = new Date(`${iso.slice(0, 10)}T00:00:00+08:00`);
+  if (Number.isNaN(from.getTime())) return null;
   const today = new Date(`${kl(new Date())}T00:00:00+08:00`);
-  return Math.round((today - sent) / 86400000);
+  return Math.round((today - from) / 86400000);
+}
+
+// KL today, shifted back by n days, as YYYY-MM-DD. Used to bound the query.
+function klDaysAgo(n) {
+  const today = new Date(`${kl(new Date())}T00:00:00+08:00`);
+  return kl(new Date(today.getTime() - n * 86400000));
 }
 
 // The gate expires on age > WINDOW_DAYS, so the last valid day is the sent
@@ -164,9 +171,9 @@ async function send(to, subject, text) {
 // down with it — and a validation error is deterministic, so that is not one
 // duplicate but an email every hour until the age gate closes the window.
 //
-// The sent-on date follows as a separate best-effort write. Nothing reads it,
-// so a failure there must not re-arm the send. A row carrying the checkbox
-// with the date blank is the correct direction.
+// The sent-on date follows as a separate best-effort write. Nothing reads it
+// as a guard, so a failure there must not re-arm the send. A row carrying the
+// checkbox with the date blank is the correct direction.
 async function markSent(pageId, guardProp, dateProp) {
   await notion(`/pages/${pageId}`, 'PATCH', {
     properties: { [guardProp]: { checkbox: true } },
@@ -181,35 +188,52 @@ async function markSent(pageId, guardProp, dateProp) {
   }
 }
 
+// One query covers both sends. A row is interesting if either checkbox is
+// still false — the per-row logic decides which, if any, applies.
+//
+// The `on_or_after` bound is what keeps this from growing without limit. A
+// row that lapsed unsigned used to come back every hour forever, dropped only
+// by the per-row age gate; at a few hundred abandoned rows they would have
+// crowded live ones out of the page. Notion filters the date, so a lapsed row
+// is never fetched at all and the working set stays at whatever was sent in
+// the last WINDOW_DAYS days. Pagination below covers the rest.
+async function fetchRows() {
+  const out = [];
+  let cursor;
+
+  do {
+    const page = await notion(`/databases/${process.env.NOTION_SESSIONS_DB}/query`, 'POST', {
+      filter: {
+        and: [
+          { property: 'Booking link sent', date: { on_or_after: klDaysAgo(WINDOW_DAYS) } },
+          { property: 'Release signed', checkbox: { equals: false } },
+          {
+            or: [
+              { property: 'Booking email sent', checkbox: { equals: false } },
+              { property: 'Nudge sent', checkbox: { equals: false } },
+            ],
+          },
+        ],
+      },
+      page_size: 100,
+      start_cursor: cursor,
+    });
+
+    out.push(...page.results);
+    cursor = page.has_more ? page.next_cursor : undefined;
+  } while (cursor);
+
+  return out;
+}
+
 export default async () => {
   let sent = 0;
   let nudged = 0;
   let skipped = 0;
 
-  // One query covers both sends. A row is interesting if either checkbox is
-  // still false — the per-row logic below decides which, if any, applies.
-  //
-  // NOTE: a row that lapsed unsigned never retires from this query. It comes
-  // back every hour and is dropped by the age gate. Harmless at current
-  // volume, but with page_size 25 and no pagination a backlog of abandoned
-  // rows would eventually crowd out live ones. Archive dead rows.
-  const rows = await notion(`/databases/${process.env.NOTION_SESSIONS_DB}/query`, 'POST', {
-    filter: {
-      and: [
-        { property: 'Booking link sent', date: { is_not_empty: true } },
-        { property: 'Release signed', checkbox: { equals: false } },
-        {
-          or: [
-            { property: 'Booking email sent', checkbox: { equals: false } },
-            { property: 'Nudge sent', checkbox: { equals: false } },
-          ],
-        },
-      ],
-    },
-    page_size: 25,
-  });
+  const rows = await fetchRows();
 
-  for (const row of rows.results) {
+  for (const row of rows) {
     const p = row.properties;
 
     try {
@@ -218,16 +242,32 @@ export default async () => {
       const linkSent = plain(p['Booking link sent']);
       const age = daysSince(linkSent);
 
-      // Backdated past the window, or dated into the future. Either way the
-      // gate refuses this link, so sending it would mail a dead page.
+      // Dated into the future, or unparseable. The on_or_after filter already
+      // caught anything backdated past the window; this is the belt to that
+      // braces, and it is what the expiry date in the email is computed from.
       if (age === null || age < 0 || age > WINDOW_DAYS) { skipped++; continue; }
 
       const firstDone = checked(p['Booking email sent']);
       const nudgeDone = checked(p['Nudge sent']);
 
-      // Nothing to do: first email already out, and either the nudge has gone
-      // or today is not its day.
-      if (firstDone && (nudgeDone || age !== NUDGE_DAY)) { skipped++; continue; }
+      let isNudge = false;
+
+      if (firstDone) {
+        if (nudgeDone) { skipped++; continue; }
+
+        // Measured from the first email, not from `Booking link sent`.
+        //
+        // `Booking email sent on` is a best-effort write and can legitimately
+        // be blank while the checkbox is set — that is documented as the
+        // correct failure direction, and it means this date cannot be the
+        // only thing the nudge depends on. Falling back to the link date
+        // makes a blank cost a slightly early nudge rather than no nudge.
+        const firstSent = plain(p['Booking email sent on']) || linkSent;
+        const sinceFirst = daysSince(firstSent);
+        if (sinceFirst === null || sinceFirst < NUDGE_AFTER_DAYS) { skipped++; continue; }
+
+        isNudge = true;
+      }
 
       const personId = p.Person?.relation?.[0]?.id;
       if (!personId) { skipped++; continue; }
@@ -240,7 +280,7 @@ export default async () => {
       const link = `${BOOKING_BASE}?s=${row.id}`;
       const until = longDate(expiryDate(linkSent));
 
-      if (!firstDone) {
+      if (!isNudge) {
         // First email. The sign-during-run race is left open here: rows are
         // read at the top and worked through in order, so someone who signs
         // mid-run still gets this. Harmless — session-lookup returns
@@ -251,9 +291,9 @@ export default async () => {
         continue;
       }
 
-      // Nudge, day three. Here the race is not harmless — a reminder landing
-      // an hour after she signed reads as not having noticed. Re-read the row
-      // immediately before sending. One extra call, only on nudge days.
+      // Nudge. Here the race is not harmless — a reminder landing an hour
+      // after she signed reads as not having noticed. Re-read the row
+      // immediately before sending. One extra call, only on nudge sends.
       const fresh = await notion(`/pages/${row.id}`);
       if (checked(fresh.properties['Release signed'])
         || DONE.has(plain(fresh.properties.Status))
