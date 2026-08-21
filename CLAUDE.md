@@ -40,6 +40,7 @@ netlify/
     on-set-intake.mjs        walk-up: form -> Notion -> contract, one pass
     esign-webhook.mjs        signed -> Notion, confirm Cal booking
     availability.mjs         Cal slots -> public grid
+    booking-email.mjs        booking link + one nudge, hourly schedule
 netlify.toml
 ```
 
@@ -87,6 +88,7 @@ Scoped to Functions.
 | `NOTION_SESSIONS_DB` | Sessions database ID |
 | `ESIGNATURES_TOKEN` | API auth **and** the HMAC key for webhook verification |
 | `CAL_API_KEY` | Never expires |
+| `RESEND_API_KEY` | Used by `booking-email.mjs` only. Without it the hourly run throws and no booking link or nudge goes out |
 | `ON_SET_KEY` | Invented random string. The only thing protecting `/booking/schedule`, which lists client names |
 | `ESIGN_TEST_EMAILS` | Optional, comma-separated. Extra addresses that always send free |
 | `ESIGN_TEST_MODE` | Optional. `yes` forces every contract free. **Never set on Production** |
@@ -180,6 +182,43 @@ the first thing to check.
 
 ---
 
+## The signature
+
+One canonical block, ending every outbound email. It reads exactly:
+
+```
+Earl Kiu
+Editorial · Fashion · Portrait Photographer
+earlkiu.com · +60 17-311 0017
+```
+
+`booking-email.mjs` holds it as the `SIGNATURE` constant, shared by the booking
+link and the nudge. **That constant is the source of truth.**
+
+Two other copies exist and **cannot be merged into it**, because neither lives
+in this repo:
+
+1. **Gmail's signature setting.** It is inserted by the Gmail compose window in
+   the browser and never travels — anything sent through the Gmail API, sent or
+   drafted, goes out with exactly the body supplied and no signature at all
+2. **Anything sent on Earl's behalf** by an assistant or connector, which must
+   paste the block above verbatim
+
+Changing one does not change the others. Change all three or none, and copy from
+this file rather than from memory. The middle dots are `·` (U+00B7), not periods;
+the number carries `+60` and a space after `311`.
+
+**Emails are plain text.** Resend is called with `text` only, never `html`.
+There is no stylesheet and no brand font, and that is deliberate — Artifex Hand
+CF is an Adobe font and cannot be embedded in email, Gmail strips `@font-face`
+regardless, and an HTML body costs deliverability for nothing. Any new outbound
+email keeps the plain-text form and ends with `SIGNATURE`.
+
+`FROM` is `Earl Kiu <hello@earlkiu.com>` with `reply_to` set to the same
+address. Replies land in the inbox Earl actually reads, not `itsme@`.
+
+---
+
 ## Traps
 
 **eSignatures API**
@@ -228,7 +267,7 @@ carries no timezone label. All date formatting in the functions pins
 
 - Every top-level `.mjs` in `netlify/functions/` is treated as a function, so
   **a shared helper module there is a trap.** `notion`, `esig`, `plain`,
-  `prettyDate` and the test-mode block are duplicated on purpose
+  `prettyDate`, `SIGNATURE` and the test-mode block are duplicated on purpose
 - Failures return a plain message to the browser and log the detail. The real
   error is in Netlify → Logs → Functions, never on screen
 - `/booking` is a link Earl sends. It is never linked from the form or the
