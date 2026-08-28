@@ -33,6 +33,11 @@ const AGREEMENT = 'd42be4d3-af77-41e0-82ad-2e11799e5332';
 const SCHEDULE_1_EMBEDDED = '597b12b4-7cb9-4e4a-bac8-d85b0e0996c1';
 const SCHEDULE_1_STANDALONE = 'f9574239-e102-40bf-982c-1f33b649e23b';
 
+// What eSignatures prints as the heading, names the PDF with, and puts in the
+// subject of her email. Overrides the template's own title. Duplicated in
+// create-contract.mjs and on-set-intake.mjs — see the note there.
+const DOCUMENT_TITLE = 'Collaboration Agreement and Model Release';
+
 const NEEDS_SCHEDULE = new Set([
   'Implied — strategically covered',
   'Topless',
@@ -202,7 +207,7 @@ export default async (req) => {
       // No agreement yet — walk-up shoot. Full agreement, dated today.
       payload = {
         template_id: AGREEMENT,
-        title: `Collaboration Agreement — ${name}`,
+        title: `${DOCUMENT_TITLE} — ${name}`,
         metadata: `${s}||agreement`,
         placeholder_fields: [
           { placeholder_key: 'model_email', replace_with_text: addr },
