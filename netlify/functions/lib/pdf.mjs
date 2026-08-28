@@ -21,13 +21,15 @@ const WIDTH = PAGE_W - MARGIN * 2;
 // Helvetica averages a little under half the point size per character.
 const CHAR_W = 0.5;
 
+// Escaped, not literal — a literal non-breaking space does not survive being
+// carried through tooling and silently becomes an ordinary one.
 const FOLD = [
   [/[‘’‚′]/g, "'"],
   [/[“”„″]/g, '"'],
   [/[–—―]/g, '-'],
   [/[•·]/g, '-'],
   [/…/g, '...'],
-  [/ /g, ' '],
+  [/ /g, ' '],
 ];
 
 function fold(s) {
