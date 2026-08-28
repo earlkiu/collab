@@ -26,6 +26,13 @@ const NOTION_VERSION = '2022-06-28';
 const AGREEMENT = 'd42be4d3-af77-41e0-82ad-2e11799e5332';
 const SCHEDULE_1 = '597b12b4-7cb9-4e4a-bac8-d85b0e0996c1';
 
+// What eSignatures prints as the heading on page one, names the PDF with, and
+// puts in the subject of the email she receives. It is NOT the template's own
+// title — that is only a default, and this overrides it every time. Duplicated
+// in on-set.mjs and on-set-intake.mjs; Netlify treats every top-level .mjs in
+// the functions directory as a function, so it cannot be shared from here.
+const DOCUMENT_TITLE = 'Collaboration Agreement and Model Release';
+
 // Wardrobe levels that pull Schedule 1 into the packet. Anything else and the
 // schedule is not in the document at all — a blank schedule must never be a
 // thing that means something.
@@ -174,7 +181,7 @@ export default async (req) => {
 
     const contract = await esig('/contracts', {
       template_id: AGREEMENT,
-      title: `Collaboration Agreement — ${name}`,
+      title: `${DOCUMENT_TITLE} — ${name}`,
       metadata: `${s}|${uid || ''}`,
       test: isTest,
       locale: 'en-GB',
