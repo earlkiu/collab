@@ -21,16 +21,19 @@ const WIDTH = PAGE_W - MARGIN * 2;
 // Helvetica averages a little under half the point size per character.
 const CHAR_W = 0.5;
 
-// The non-breaking space is written   rather than as itself. A literal
-// one does not survive being carried through tooling — it arrives as an
-// ordinary space, leaving a rule that replaces a space with a space.
+// Built from its code point rather than written out. A non-breaking space
+// does not survive being carried through tooling — as a literal or as an
+// escape it arrives as an ordinary space, leaving a rule that replaces a
+// space with a space.
+const NBSP = String.fromCharCode(160);
+
 const FOLD = [
   [/[‘’‚′]/g, "'"],
   [/[“”„″]/g, '"'],
   [/[–—―]/g, '-'],
   [/[•·]/g, '-'],
   [/…/g, '...'],
-  [/ /g, ' '],
+  [new RegExp(NBSP, 'g'), ' '],
 ];
 
 function fold(s) {
