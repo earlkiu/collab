@@ -21,8 +21,9 @@ const WIDTH = PAGE_W - MARGIN * 2;
 // Helvetica averages a little under half the point size per character.
 const CHAR_W = 0.5;
 
-// Escaped, not literal — a literal non-breaking space does not survive being
-// carried through tooling and silently becomes an ordinary one.
+// The non-breaking space is written   rather than as itself. A literal
+// one does not survive being carried through tooling — it arrives as an
+// ordinary space, leaving a rule that replaces a space with a space.
 const FOLD = [
   [/[‘’‚′]/g, "'"],
   [/[“”„″]/g, '"'],
