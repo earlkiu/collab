@@ -28,6 +28,11 @@ const NOTION_VERSION = '2022-06-28';
 const AGREEMENT = 'd42be4d3-af77-41e0-82ad-2e11799e5332';
 const SCHEDULE_1_EMBEDDED = '597b12b4-7cb9-4e4a-bac8-d85b0e0996c1';
 
+// What eSignatures prints as the heading, names the PDF with, and puts in the
+// subject of her email. Overrides the template's own title. Duplicated in
+// create-contract.mjs and on-set.mjs — see the note there.
+const DOCUMENT_TITLE = 'Collaboration Agreement and Model Release';
+
 const NEEDS_SCHEDULE = new Set([
   'Implied — strategically covered',
   'Topless',
@@ -220,7 +225,7 @@ export default async (req) => {
 
     const contract = await esig('/contracts', {
       template_id: AGREEMENT,
-      title: `Collaboration Agreement — ${name}`,
+      title: `${DOCUMENT_TITLE} — ${name}`,
       metadata: `${session.id}||agreement`,
       test: isTest,
       locale: 'en-GB',
