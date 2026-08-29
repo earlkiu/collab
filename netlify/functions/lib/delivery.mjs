@@ -125,8 +125,10 @@ export function fileName(fullName, submitted) {
 
 /* ---------- email ---------- */
 
-function emailBody(d, fullName, submitted) {
-  const lines = [`${fullName} — collab application, ${prettyDate(submitted)}`, ''];
+function emailBody(d, fullName, submitted, notice) {
+  const lines = [];
+  if (notice) lines.push(notice, '');
+  lines.push(`${fullName} — collab application, ${prettyDate(submitted)}`, '');
   for (const [label, get] of FIELDS) {
     const value = get(d);
     if (value) lines.push(`${label}: ${value}`);
@@ -137,7 +139,11 @@ function emailBody(d, fullName, submitted) {
   return lines.join('\n');
 }
 
-export async function emailApplication(d, fullName, submitted, pdf, name) {
+// `notice` is set only when something upstream failed — it goes at the top of the
+// body and into the subject, because this email is now the only thing that tells
+// Earl an application arrived. Netlify's own form notification was turned off on
+// 29 Aug 2026.
+export async function emailApplication(d, fullName, submitted, pdf, name, notice) {
   if (!process.env.RESEND_API_KEY) {
     console.log('application email skipped — no RESEND_API_KEY');
     return;
@@ -152,8 +158,8 @@ export async function emailApplication(d, fullName, submitted, pdf, name) {
       from: FROM,
       to: [TO()],
       reply_to: t(d.Email) || undefined,
-      subject: `Collab application — ${fullName}`,
-      text: emailBody(d, fullName, submitted),
+      subject: `${notice ? '[ACTION NEEDED] ' : ''}Collab application — ${fullName}`,
+      text: emailBody(d, fullName, submitted, notice),
       attachments: [{ filename: name, content: pdf.toString('base64') }],
     }),
   });
