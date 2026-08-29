@@ -10,6 +10,7 @@
  *   3. Create a Session row of type "Collab", linked to that person
  *   4. Append who-she-is and her photographs to the PERSON page body
  *   5. Write shoot-facing answers into the session page body
+ *   6. Email the application to Earl as a PDF, and file the same PDF in Drive
  *
  * Where the long answers go, and why:
  *   The application describes the person, not the shoot. It belongs on the
@@ -27,9 +28,18 @@
  *   NOTION_PEOPLE_DB    — People database ID
  *   NOTION_SESSIONS_DB  — Sessions database ID
  *
+ * Step 6 lives in ./lib/delivery.mjs and is best effort — see the note there.
+ * Subdirectories of the functions folder are not themselves functions unless
+ * they contain a file named after the folder, so lib/ is safe to import from.
+ *
  * Both databases must be shared with the integration
  * (open database → ⋯ → Connections → add the integration).
  */
+
+import {
+  applicationPdf, fileName, emailApplication, uploadToDrive,
+  measurementLine, agencyLine,
+} from './lib/delivery.mjs';
 
 const NOTION_API = 'https://api.notion.com/v1';
 const NOTION_VERSION = '2022-06-28';
@@ -147,10 +157,33 @@ async function createPerson(d, fullName) {
         'Based In': richText(d['Based in']),
         DOB: date(d['Date of birth']),
         Source: select(d['How they found it']),
+        ...personFacts(d),
       }),
     }),
   });
   return page.id;
+}
+
+// Measurements and agency describe the person, so they live on the person.
+// They also go stale: what is on the property is the latest answer, and the
+// dated block on the page body is what she said at the time.
+function personFacts(d) {
+  return clean({
+    Measurements: richText(measurementLine(d)),
+    Agency: select(d.Agency),
+    'Agency name': richText(d['Agency name']),
+  });
+}
+
+// A returning applicant already has a row. Overwrite only what she answered —
+// clean() drops the blanks, so a skipped measurement never wipes an old one.
+async function refreshPerson(personId, d) {
+  const properties = personFacts(d);
+  if (!Object.keys(properties).length) return;
+  await notion(`/pages/${personId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ properties }),
+  });
 }
 
 // Append, never overwrite. A second application a year later is a second entry;
@@ -186,7 +219,15 @@ export default async (req) => {
     // 1 + 2 — match on email, create if new
     let personId = await findPersonByEmail(addr);
     const isNew = !personId;
-    if (!personId) personId = await createPerson({ ...d, Email: addr }, fullName);
+    if (!personId) {
+      personId = await createPerson({ ...d, Email: addr }, fullName);
+    } else {
+      try {
+        await refreshPerson(personId, d);
+      } catch (err) {
+        console.error(`person refresh failed for ${addr}:`, err.message);
+      }
+    }
 
     // 3 — the session. Shoot-facing answers only.
     const sessionTitle = `${fullName} · Collab · ${submitted.slice(0, 7)}`;
@@ -229,6 +270,8 @@ export default async (req) => {
     try {
       const application = [
         ...section('Who they are', d['Who they are']),
+        ...section('Agency', agencyLine(d)),
+        ...section('Measurements', measurementLine(d)),
         ...photoSection(d),
       ];
       if (application.length) {
@@ -240,6 +283,29 @@ export default async (req) => {
       }
     } catch (err) {
       console.error(`person body append failed for ${addr}:`, err.message);
+    }
+
+    // 6 — the PDF. Email first, then Drive: the email is the one Earl reads,
+    // and the Drive copy is the archive. Each is caught on its own so a Drive
+    // outage does not cost the email. Neither can fail the submission.
+    try {
+      const pdf = applicationPdf(d, fullName, submitted);
+      const name = fileName(fullName, submitted);
+
+      try {
+        await emailApplication(d, fullName, submitted, pdf, name);
+      } catch (err) {
+        console.error(`application email failed for ${addr}:`, err.message);
+      }
+
+      try {
+        const file = await uploadToDrive(pdf, name);
+        if (file) console.log(`application filed in Drive: ${file.id}`);
+      } catch (err) {
+        console.error(`drive upload failed for ${addr}:`, err.message);
+      }
+    } catch (err) {
+      console.error(`application PDF failed for ${addr}:`, err.message);
     }
 
     console.log(`collab → ${fullName} <${addr}> — person ${isNew ? 'created' : 'matched'}`);

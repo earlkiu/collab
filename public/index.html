@@ -475,11 +475,64 @@
           <option value="Professional or agency experience">Professional or agency experience</option>
         </select>
       </div>
+
+      <div class="field">
+        <label for="agency">Are you signed with an agency</label>
+        <select id="agency" name="Agency">
+          <option value="">Select one</option>
+          <option value="Not signed">No</option>
+          <option value="Signed with an agency">Yes</option>
+        </select>
+      </div>
+
+      <div class="field" id="agency-field" hidden>
+        <label for="agency-name">Which agency</label>
+        <span class="hint">It changes nothing about whether we shoot. It matters because your agency may have a say in how the images are used.</span>
+        <input type="text" id="agency-name" name="Agency name">
+      </div>
     </section>
 
     <!-- 03 ---------------------------------------------------------- -->
     <section class="section">
       <p class="section-label">03 — Practical things</p>
+
+      <div class="field">
+        <span class="legend">Measurements <span class="req">Optional</span></span>
+        <span class="hint">Only if you have them to hand, and only the ones you know. This is for wardrobe — if anything is being brought or borrowed for the session, it needs to fit before the day rather than on it. Skip the whole thing if you'd rather.</span>
+      </div>
+
+      <div class="pair">
+        <div class="field">
+          <label for="height">Height <span class="req">cm</span></label>
+          <input type="text" id="height" name="Height" inputmode="numeric" placeholder="170">
+        </div>
+        <div class="field">
+          <label for="bust">Bust or chest <span class="req">cm</span></label>
+          <input type="text" id="bust" name="Bust or chest" inputmode="numeric" placeholder="86">
+        </div>
+      </div>
+
+      <div class="pair">
+        <div class="field">
+          <label for="waist">Waist <span class="req">cm</span></label>
+          <input type="text" id="waist" name="Waist" inputmode="numeric" placeholder="63">
+        </div>
+        <div class="field">
+          <label for="hips">Hips <span class="req">cm</span></label>
+          <input type="text" id="hips" name="Hips" inputmode="numeric" placeholder="90">
+        </div>
+      </div>
+
+      <div class="pair">
+        <div class="field">
+          <label for="dress">Dress or suit size <span class="req">EU</span></label>
+          <input type="text" id="dress" name="Dress or suit size" inputmode="numeric" placeholder="36">
+        </div>
+        <div class="field">
+          <label for="shoe">Shoe size <span class="req">EU</span></label>
+          <input type="text" id="shoe" name="Shoe size" inputmode="numeric" placeholder="38">
+        </div>
+      </div>
 
       <fieldset class="field">
         <span class="legend">Where you're comfortable <span class="req">Required</span></span>
@@ -507,7 +560,7 @@
       <p class="section-label">04 — The arrangement</p>
 
       <div class="terms-body">
-        <p>Neither of us is paid. You receive <strong>between 6 and 12 finished images</strong>, edited and delivered digitally, usually within three to four weeks.</p>
+        <p>Neither of us is paid. You receive <strong>six finished images</strong>, edited and delivered digitally, usually within three to four weeks.</p>
         <p>Those images are yours to keep and to post — personally, socially, and in your own portfolio. They aren't to be used commercially, sold, or altered with crops, filters or edits of any kind. You're welcome to show them when applying for representation, but an agency can't use or distribute them without my permission. The frame is part of the picture.</p>
         <p>On my side, I keep the right to use the images however I choose — portfolio, print, exhibition, publication, editorial, promotion, online. That's the trade, and it's the whole reason the session costs nothing.</p>
         <p>Everything else — wardrobe, location, what we're making — we work out together before the day.</p>
@@ -531,7 +584,7 @@
   </form>
 
   <p class="colophon">
-    Earl Kiu — <a href="mailto:hello@earlkiu.com">hello@earlkiu.com</a> · <a href="https://earlkiu.com/">earlkiu.com</a>
+    Earl Kiu — <a href="mailto:hello@earlkiu.com">hello@earlkiu.com</a> · <a href="https://earlkiu.com/">earlkiu.com</a> · <a href="https://www.instagram.com/earlkiu/">@earlkiu</a>
   </p>
 
 </div>
@@ -568,6 +621,21 @@
 
     heard.addEventListener('change', toggleReferred);
     toggleReferred();
+
+    // Same pattern for the agency name. Compared against the option's value,
+    // never its label — a translated page rewrites the label.
+    var agency = document.getElementById('agency');
+    var agencyField = document.getElementById('agency-field');
+    var agencyName = document.getElementById('agency-name');
+
+    function toggleAgency() {
+      var show = agency.value === 'Signed with an agency';
+      agencyField.hidden = !show;
+      if (!show) agencyName.value = '';
+    }
+
+    agency.addEventListener('change', toggleAgency);
+    toggleAgency();
 
     dob.addEventListener('change', function () {
       dobError.classList.toggle('show', dob.value !== '' && !isAdult(dob.value));
