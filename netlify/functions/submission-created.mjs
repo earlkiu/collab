@@ -12,6 +12,10 @@
  *   5. Write shoot-facing answers into the session page body
  *   6. Email the application to Earl as a PDF, and file the same PDF in Drive
  *
+ * Step 6 runs whether or not steps 1-5 succeeded. Netlify's own form notification
+ * was turned off on 29 Aug 2026, so this email is the only thing that tells Earl
+ * an application arrived — it must not be behind a Notion write that can fail.
+ *
  * Where the long answers go, and why:
  *   The application describes the person, not the shoot. It belongs on the
  *   person, appended under a dated heading each time she applies — never
@@ -215,10 +219,15 @@ export default async (req) => {
   const addr = text(d.Email).toLowerCase();
   const submitted = (payload.created_at || new Date().toISOString()).slice(0, 10);
 
+  // Notion first, but never at the cost of the email. `notice` carries the
+  // failure into the email body and subject when something here breaks.
+  let notice = '';
+  let isNew = false;
+
   try {
     // 1 + 2 — match on email, create if new
     let personId = await findPersonByEmail(addr);
-    const isNew = !personId;
+    isNew = !personId;
     if (!personId) {
       personId = await createPerson({ ...d, Email: addr }, fullName);
     } else {
@@ -285,34 +294,43 @@ export default async (req) => {
       console.error(`person body append failed for ${addr}:`, err.message);
     }
 
-    // 6 — the PDF. Email first, then Drive: the email is the one Earl reads,
-    // and the Drive copy is the archive. Each is caught on its own so a Drive
-    // outage does not cost the email. Neither can fail the submission.
+    console.log(`collab → ${fullName} <${addr}> — person ${isNew ? 'created' : 'matched'}`);
+  } catch (err) {
+    // Log loudly, then carry on to the email. The submission is still safe in
+    // Netlify's Forms dashboard, but nothing else would tell Earl it arrived.
+    console.error('collab → Notion failed:', err.message);
+    notice = `This application did NOT reach Notion — ${err.message}. `
+      + 'Everything she sent is below and in the attached PDF. '
+      + 'Add the row by hand, or check Netlify → Logs → Functions.';
+  }
+
+  // 6 — the PDF. Outside the Notion try/catch on purpose: it runs whether or not
+  // Notion succeeded. Email first, then Drive — the email is the one Earl reads,
+  // the Drive copy is the archive, and each is caught on its own so a Drive
+  // outage does not cost the email.
+  try {
+    const pdf = applicationPdf(d, fullName, submitted);
+    const name = fileName(fullName, submitted);
+
     try {
-      const pdf = applicationPdf(d, fullName, submitted);
-      const name = fileName(fullName, submitted);
-
-      try {
-        await emailApplication(d, fullName, submitted, pdf, name);
-      } catch (err) {
-        console.error(`application email failed for ${addr}:`, err.message);
-      }
-
-      try {
-        const file = await uploadToDrive(pdf, name);
-        if (file) console.log(`application filed in Drive: ${file.id}`);
-      } catch (err) {
-        console.error(`drive upload failed for ${addr}:`, err.message);
-      }
+      await emailApplication(d, fullName, submitted, pdf, name, notice);
     } catch (err) {
-      console.error(`application PDF failed for ${addr}:`, err.message);
+      console.error(`application email failed for ${addr}:`, err.message);
     }
 
-    console.log(`collab → ${fullName} <${addr}> — person ${isNew ? 'created' : 'matched'}`);
-    return new Response('OK', { status: 200 });
+    try {
+      const file = await uploadToDrive(pdf, name);
+      if (file) console.log(`application filed in Drive: ${file.id}`);
+    } catch (err) {
+      console.error(`drive upload failed for ${addr}:`, err.message);
+    }
   } catch (err) {
-    // Log loudly. The submission is still safe in Netlify's Forms dashboard.
-    console.error('collab → Notion failed:', err.message);
-    return new Response('Notion write failed', { status: 500 });
+    console.error(`application PDF failed for ${addr}:`, err.message);
   }
+
+  // 500 keeps the failure visible in the Netlify function log. Netlify does not
+  // retry submission-created, so this does not risk a second email.
+  return notice
+    ? new Response('Notion write failed', { status: 500 })
+    : new Response('OK', { status: 200 });
 };

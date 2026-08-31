@@ -102,6 +102,10 @@ fields — `Height`, `Bust or chest`, `Waist`, `Hips`, `Dress or suit size`,
 `Shoe size`. All six are `type="text"` with `inputmode="numeric"` so they keep
 the shared input styling.
 
+**Only required fields carry a tag.** The grey `.req` chip means Required and
+nothing else — no "Optional" markers on the optional fields, and no units riding
+on the same style. Units belong in the label text: *Height (cm)*.
+
 The page resizes images in the browser before submitting — 1600px long edge,
 JPEG 0.82 — because Netlify caps the whole submission at 8 MB and times uploads
 out at 30 seconds.
@@ -119,7 +123,7 @@ Scoped to Functions.
 | `NOTION_SESSIONS_DB` | Sessions database ID |
 | `ESIGNATURES_TOKEN` | API auth **and** the HMAC key for webhook verification |
 | `CAL_API_KEY` | Never expires |
-| `RESEND_API_KEY` | Used by `booking-email.mjs` and the application email. Without it the hourly run throws and no booking link or nudge goes out; the application email logs that it skipped |
+| `RESEND_API_KEY` | Used by `booking-email.mjs` and the application email. Without it the hourly run throws and no booking link or nudge goes out; the application email logs that it skipped — **and since Netlify's own notification is off, an application would then arrive silently** |
 | `ON_SET_KEY` | Invented random string. The only thing protecting `/booking/schedule`, which lists client names |
 | `ESIGN_TEST_EMAILS` | Optional, comma-separated. Extra addresses that always send free |
 | `ESIGN_TEST_MODE` | Optional. `yes` forces every contract free. **Never set on Production** |
@@ -138,9 +142,23 @@ database → ⋯ → Connections → add the integration.
 emailing it to `APPLICATION_EMAIL_TO` with the PDF attached, and filing the same
 PDF in Google Drive. Code in `lib/delivery.mjs`, writer in `lib/pdf.mjs`.
 
-**All three legs are best effort and run after the Notion writes**, each in its
-own try/catch. A Drive outage never costs the email, and nothing here can fail
-the submission — the Notion row is what must not be lost.
+⚠️ **This email is the only notice that an application arrived.** Netlify's own
+form notification was **turned off on 29 August 2026** — it duplicated this one
+without the attachment, and Netlify gives no way to attach anything to it.
+
+That is why **the delivery block sits outside the Notion try/catch**. It used to
+be inside, so a failed Notion write meant no email at all and the submission sat
+in the Forms dashboard with nothing to prompt anyone to look. It now runs either
+way, and when Notion fails the email carries a `notice`: `[ACTION NEEDED]` in the
+subject, and a first line saying the row was not created and has to be added by
+hand. **Keep it outside.**
+
+The function still returns 500 on a Notion failure so it stays visible in the
+function log. Netlify does not retry `submission-created`, so that costs no
+duplicate email.
+
+**The three legs are individually best effort**, each in its own try/catch. A
+Drive outage never costs the email, and nothing here can fail the submission.
 
 **The PDF writer is hand-rolled on purpose.** The repo has no `package.json`, and
 adding one would put an `npm install` in front of a build that has none, for one
@@ -159,10 +177,6 @@ sees only what has been shared with the service account.
 Photograph URLs go into the PDF as **plain text**, not annotations — they are
 Netlify submission links and the only copy of the files, so a link you cannot
 read out of the page is useless. Treat the PDF as being as shareable as they are.
-
-**Netlify's own form notification still sends**, without an attachment, and
-duplicates this email. Turn it off in the Netlify UI if it annoys; nothing here
-controls it.
 
 ---
 
@@ -186,6 +200,12 @@ something.
 The em dash in `'Implied — strategically covered'` is an em dash, not a hyphen.
 It must match the Notion select option exactly or the schedule silently never
 attaches.
+
+**Injection verified on a live contract, 29 Aug 2026.** The schedule renders, and
+the three wardrobe levels behave as **one radio group** — selecting one deselects
+the others. The `input_required: yes` carried by all three is therefore redundant,
+not a demand that the signer select all three. **Keep the three lines adjacent**;
+a blank line or paragraph between them splits the group.
 
 **The contract title is set per contract and overrides the template's own.**
 eSignatures prints it as the heading on page one, names the signed PDF with it,
@@ -318,7 +338,7 @@ answers her.
 
 - **A non-ASCII character can be flattened between an editor and this repo.** A
   non-breaking space in `lib/pdf.mjs` arrived as an ordinary space twice — once
-  as a literal, once as a ` ` escape — leaving a rule that replaced a space
+  as a literal, once as a ` ` escape — leaving a rule that replaced a space
   with a space. It is now built with `String.fromCharCode(160)`, which is plain
   ASCII on disk. **Do the same for anything that must survive byte for byte**
 - **Read the committed file back through the API, not the raw CDN.**
@@ -349,6 +369,9 @@ answers her.
   double-append
 - Two names appear on a contract: `signers[].name` is fixed at creation, the
   `model_name` signer field is hers to correct. They can differ
+- **A rendered contract is the only real test.** The field reference told us the
+  radios ought to group; only opening a live one proved it. Send a free test
+  contract to `itsme@` before trusting any change to a template
 
 **Notion**
 
@@ -392,8 +415,11 @@ carries no timezone label. All date formatting in the functions pins
   error is in Netlify → Logs → Functions, never on screen
 - `/booking` is a link Earl sends. It is never linked from the form or the
   thanks page — booking comes after qualification
-- If a Notion write fails, the submission is still in the Netlify Forms
-  dashboard
+- **A failure must be loud somewhere a human looks.** If a Notion write fails the
+  submission is still in the Netlify Forms dashboard — but nobody checks that
+  unprompted, which is why the application email goes anyway and says
+  `[ACTION NEEDED]`. Apply the same test to anything new: if it breaks quietly,
+  who finds out, and how?
 
 ---
 
@@ -413,13 +439,11 @@ carries no timezone label. All date formatting in the functions pins
   set; neither is. **Signed contract PDFs are still not archived at all** —
   eSignatures retention is 3 years, the release is perpetual, and the webhook
   only logs the URL
-- **The 28 Aug work is untested.** Measurements, agency, the Person-property
-  refresh, the application PDF and its email have not been exercised by a real
-  submission
+- **The Notion-failure path has never actually fired.** A real submission ran end
+  to end on 29 Aug — row created, PDF emailed — so the happy path is proven, but
+  the `[ACTION NEEDED]` branch has only ever been reasoned about
 - **`create-contract` and the Cal leg have not been tested end to end.** The
   17 Aug run covered `on-set-intake` only
-- **Schedule 1 injection** — a free test contract was sent 28 Aug with metadata
-  `schedule-1-injection-test`. Result not yet recorded here
 - `/booking/schedule` lists 15 rows — crowded at ~30 sessions
 - `README.md` describes only the original form and one function. It predates
   everything above
